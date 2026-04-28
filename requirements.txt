@@ -1,10 +1,15 @@
+# Runtime do dashboard (Streamlit Cloud)
 streamlit>=1.32.0
 pandas>=2.0.0
 plotly>=5.18.0
 numpy>=1.26.0
 python-dateutil>=2.8.0
 openpyxl>=3.1.0
+
+# Geracao de dados e modelagem (usado por generate_data.py / eval_models.py)
 statsmodels>=0.14.0
 scikit-learn>=1.3.0
+
+# Dev / CI
 pytest>=7.4.0
 ruff>=0.4.0
