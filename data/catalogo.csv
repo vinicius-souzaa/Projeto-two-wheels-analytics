@@ -1,0 +1,53 @@
+sku,nome,marca,categoria,segmento,preco,custo,margem_pct
+X11-CAP-001,Capacete X11 Trust Pro Transit,X11,Capacetes,Moto,449.9,193.46,57.0
+X11-CAP-002,Capacete X11 Trust Pro 11,X11,Capacetes,Moto,499.9,214.96,57.0
+X11-CAP-003,Capacete X11 Revo Pro Flagger,X11,Capacetes,Moto,649.9,279.46,57.0
+X11-CAP-004,Capacete X11 Revo Pro All Black,X11,Capacetes,Moto,749.9,322.46,57.0
+X11-CAP-005,Capacete X11 Turner SV Articulado,X11,Capacetes,Moto,899.9,386.96,57.0
+X11-CAP-006,Capacete X11 Crossover Off Road,X11,Capacetes,Moto,999.9,429.96,57.0
+X11-CAP-007,Capacete X11 Ghost Urban,X11,Capacetes,Moto,579.9,249.36,57.0
+X11-JAQ-001,Jaqueta X11 Iron 3 Sporadic,X11,Jaquetas,Moto,449.9,193.46,57.0
+X11-JAQ-002,Jaqueta X11 Super Air Ventilada,X11,Jaquetas,Moto,399.9,171.96,57.0
+X11-JAQ-003,Jaqueta X11 Breeze 2 Ventilada,X11,Jaquetas,Moto,349.9,150.46,57.0
+X11-JAQ-004,Jaqueta X11 Expedition Impermeavel,X11,Jaquetas,Moto,599.9,257.96,57.0
+X11-JAQ-005,Jaqueta X11 One Sport Masculina,X11,Jaquetas,Moto,299.9,128.96,57.0
+X11-JAQ-006,Jaqueta X11 Sport Naked,X11,Jaquetas,Moto,329.9,141.86,57.0
+X11-LUV-001,Luva X11 Route 2 Couro,X11,Luvas,Moto,189.9,81.66,57.0
+X11-LUV-002,Luva X11 Blackout 2,X11,Luvas,Moto,129.9,55.86,57.0
+X11-LUV-003,Luva X11 Impact 2 Cano Longo,X11,Luvas,Moto,229.9,98.86,57.0
+X11-LUV-004,Luva X11 Thermic Segunda Pele,X11,Luvas,Moto,89.9,38.66,57.0
+X11-LUV-005,Luva X11 Nitro 4,X11,Luvas,Moto,139.9,60.16,57.0
+X11-CAL-001,Calca X11 Montano Masculina,X11,Calcas,Moto,349.9,150.46,57.0
+X11-CAL-002,Calca X11 Urban Feminina,X11,Calcas,Moto,299.9,128.96,57.0
+X11-BOT-001,Bota X11 Urban 2,X11,Botas,Moto,399.9,171.96,57.0
+X11-BOT-002,Bota X11 Dirt Trilha,X11,Botas,Moto,549.9,236.46,57.0
+SCD-CAP-001,Capacete Scud Fenix Solide,Scud,Capacetes,Moto,349.9,167.95,52.0
+SCD-CAP-002,Capacete Scud Attack 2 Viseira,Scud,Capacetes,Moto,279.9,134.35,52.0
+SCD-CAP-003,Capacete Scud E-Future Eletrico,Scud,Capacetes,Moto,499.9,239.95,52.0
+SCD-CAP-004,Capacete Scud Speed Carbon,Scud,Capacetes,Moto,599.9,287.95,52.0
+SCD-ACE-001,Viseira Scud Fume Universal,Scud,Acessorios,Moto,79.9,38.35,52.0
+SCD-ACE-002,Bagageiro Scud Universal Moto,Scud,Acessorios,Moto,149.9,71.95,52.0
+SCD-ACE-003,Capa de Chuva Scud Moto,Scud,Acessorios,Moto,59.9,28.75,52.0
+SCD-ACE-004,Antena Scud Curta Universal,Scud,Acessorios,Moto,29.9,14.35,52.0
+SCD-ACE-005,Spoiler Traseiro Scud Honda CG,Scud,Acessorios,Moto,89.9,43.15,52.0
+VES-JAQ-001,Jaqueta Vessel Basic Urban,Vessel,Jaquetas,Moto,259.9,98.76,62.0
+VES-CAL-001,Calca Vessel Urban Stretch,Vessel,Calcas,Moto,299.9,113.96,62.0
+VES-LUV-001,Luva Vessel Street Ventilada,Vessel,Luvas,Moto,119.9,45.56,62.0
+VES-CAP-001,Capacete Vessel Integral Full,Vessel,Capacetes,Moto,319.9,121.56,62.0
+VES-ACE-001,Kit Protecao Vessel Joelhos/Cotovelo,Vessel,Acessorios,Moto,149.9,56.96,62.0
+HO-BIK-001,Bike HighOne Attack Sport 21v Aro 29,HighOne,Bicicletas,Bike,1499.0,794.47,47.0
+HO-BIK-002,Bike HighOne MTB Expert 24v Aro 29,HighOne,Bicicletas,Bike,2299.0,1218.47,47.0
+HO-BIK-003,Bike HighOne Speed React 700c,HighOne,Bicicletas,Bike,2899.0,1536.47,47.0
+HO-BIK-004,Bike HighOne Kids Fun 20v,HighOne,Bicicletas,Bike,799.0,423.47,47.0
+HO-ACE-001,Capacete HighOne MTB Trail,HighOne,Capacetes,Bike,199.9,105.95,47.0
+HO-ACE-002,Luva HighOne Trail Gel,HighOne,Luvas,Bike,89.9,47.65,47.0
+HO-ACE-003,Oculos HighOne Vision UV400,HighOne,Acessorios,Bike,129.9,68.85,47.0
+HO-ACE-004,Camiseta HighOne Dry-Fit Ciclismo,HighOne,Acessorios,Bike,79.9,42.35,47.0
+SEN-ROD-001,Roda Sentec Aero 30 Road Alu,Sentec,Rodas,Bike,799.0,463.42,42.0
+SEN-ROD-002,Roda Sentec Aero 50 Carbon Road,Sentec,Rodas,Bike,2499.0,1449.42,42.0
+SEN-ROD-003,Roda Sentec Comp 29 MTB,Sentec,Rodas,Bike,549.0,318.42,42.0
+SEN-ROD-004,Roda Sentec Trail 29 MTB Tubeless,Sentec,Rodas,Bike,699.0,405.42,42.0
+WGS-CUB-001,Cubo Traseiro WG Sports Disco 36F,WG Sports,Componentes,Bike,89.0,31.15,65.0
+WGS-CUB-002,Cubo Dianteiro WG Sports Disco 32F,WG Sports,Componentes,Bike,69.0,24.15,65.0
+WGS-ROL-001,Roldana Cambio WG Sports Alu 11d,WG Sports,Componentes,Bike,39.0,13.65,65.0
+WGS-KIT-001,Kit Cubo WG Sports Completo,WG Sports,Componentes,Bike,149.0,52.15,65.0

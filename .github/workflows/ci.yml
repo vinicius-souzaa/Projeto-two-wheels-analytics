@@ -1,0 +1,55 @@
+name: CI — LM 2 Rodas Dashboard
+
+on:
+  push:
+    branches: [main, "feature/*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validação de Dados & Sintaxe
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Verificar sintaxe — app.py
+        run: python -m py_compile app.py
+
+      - name: Verificar sintaxe — utils/data_loader.py
+        run: python -m py_compile utils/data_loader.py
+
+      - name: Verificar sintaxe — generate_data.py
+        run: python -m py_compile generate_data.py
+
+      - name: Rodar testes
+        run: pytest tests/ -v --tb=short
+
+  lint:
+    name: Qualidade de Código (Ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar ruff
+        run: pip install ruff>=0.4.0
+
+      - name: Linting
+        run: ruff check . --select E,F --ignore E501,E402 --exit-zero

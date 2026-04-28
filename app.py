@@ -1,0 +1,1284 @@
+"""
+LM 2 Rodas - Dashboard de Inteligencia de Mercado & Planejamento Comercial
+Marcas: X11 | Scud | Vessel | HighOne | Sentec | WG Sports
+Distribuidora B2B | Grupo LAGOApar
+"""
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+
+from utils.data_loader import (
+    carregar_vendas, carregar_vendedores, carregar_estoque,
+    carregar_metas, carregar_projecoes, carregar_catalogo,
+    fR, delta_pct,
+)
+
+# ── Configuracao ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="LM 2 Rodas · Inteligencia de Mercado",
+    page_icon="🏍️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ── Paleta de cores LM 2 Rodas ────────────────────────────────────────────────
+C = {
+    "azul_escuro":  "#00285F",
+    "azul_medio":   "#0055A5",
+    "azul_claro":   "#2F80CC",
+    "azul_bg":      "#EBF4FF",
+    "laranja":      "#FF6B00",
+    "laranja_claro":"#FF8C42",
+    "branco":       "#FFFFFF",
+    "cinza_claro":  "#F4F7FB",
+    "cinza_texto":  "#4A5568",
+    "verde":        "#1B7A34",
+    "verde_claro":  "#D5F5E3",
+    "vermelho":     "#C0392B",
+    "vermelho_claro":"#FADBD8",
+    "amarelo":      "#B7770D",
+    "amarelo_claro":"#FEF9E7",
+}
+
+# Cores por marca — 6 cores bem distintas entre si
+MARCA_CORES = {
+    "X11":       "#FF6B00",  # laranja vibrante  (identidade X11)
+    "Scud":      "#0055A5",  # azul corporativo  (identidade LM)
+    "Vessel":    "#7D3C98",  # roxo              (diferenciado)
+    "HighOne":   "#1B7A34",  # verde escuro      (natureza/bike)
+    "Sentec":    "#00897B",  # verde-azulado/teal (tech/componentes)
+    "WG Sports": "#C0392B",  # vermelho          (energia/esporte)
+}
+
+PAGINAS = {
+    "resumo":    "Resumo Executivo",
+    "comercial": "Força de Vendas B2B",
+    "produto":   "Análise por Produto",
+    "regional":  "Análise Regional",
+    "estoque":   "Estoque e Giro",
+    "metas":     "Metas e FP&A",
+    "projecoes": "Projeções",
+}
+ICONES = {
+    "resumo":    "⚡",
+    "comercial": "📈",
+    "produto":   "🏷️",
+    "regional":  "🗺️",
+    "estoque":   "📦",
+    "metas":     "🎯",
+    "projecoes": "🔮",
+}
+
+# ── CSS global ────────────────────────────────────────────────────────────────
+st.markdown(f"""
+<style>
+  /* Fonte global +20% (Streamlit base ~14px -> ~17px) */
+  html, body {{ font-size: 17px !important; }}
+  .stApp, .stMarkdown p, .stMarkdown li, .stText {{ font-size: 1rem !important; }}
+  label, .stSelectbox label, .stMultiSelect label {{ font-size: 0.95rem !important; }}
+
+  /* Sidebar */
+  [data-testid="stSidebar"] {{
+      background: linear-gradient(180deg, {C['azul_escuro']} 0%, {C['azul_medio']} 100%);
+  }}
+  [data-testid="stSidebar"] * {{ color: {C['branco']} !important; }}
+
+  /* Botoes de navegacao (paginas inativas) — estilizados como links */
+  [data-testid="stSidebar"] .stButton > button {{
+      background: transparent !important;
+      border: none !important;
+      border-radius: 8px !important;
+      color: rgba(255,255,255,0.82) !important;
+      font-size: 0.95rem !important;
+      font-weight: 500 !important;
+      text-align: left !important;
+      justify-content: flex-start !important;
+      padding: 11px 15px !important;
+      width: 100% !important;
+      transition: background 0.18s ease !important;
+      box-shadow: none !important;
+  }}
+  [data-testid="stSidebar"] .stButton > button:hover {{
+      background: rgba(255,255,255,0.15) !important;
+      color: {C['branco']} !important;
+      border: none !important;
+      box-shadow: none !important;
+  }}
+  [data-testid="stSidebar"] .stButton > button:focus:not(:active) {{
+      box-shadow: none !important;
+      border: none !important;
+      outline: none !important;
+  }}
+  /* Pagina ativa — renderizada como div HTML, nao como botao */
+  .nav-ativo {{
+      display: block;
+      background: {C['laranja']};
+      border-radius: 8px;
+      padding: 11px 15px;
+      margin: 3px 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: {C['branco']} !important;
+  }}
+
+  /* KPI cards */
+  .kpi-card {{
+      background: {C['branco']};
+      border-radius: 12px;
+      padding: 18px 22px;
+      border-top: 4px solid {C['azul_medio']};
+      box-shadow: 0 2px 10px rgba(0,85,165,0.10);
+      margin-bottom: 6px;
+  }}
+  .kpi-card.dest {{ border-top-color: {C['laranja']}; }}
+  .kpi-card h4 {{
+      color: {C['cinza_texto']};
+      font-size: 0.78rem;
+      margin: 0;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+  }}
+  .kpi-card p {{
+      color: {C['azul_escuro']};
+      font-size: 2rem;
+      font-weight: 800;
+      margin: 6px 0 2px;
+      line-height: 1;
+  }}
+  .kpi-card small {{ font-size: 0.85rem; }}
+
+  /* Secao */
+  .sec-hdr {{
+      border-left: 4px solid {C['azul_medio']};
+      padding-left: 13px;
+      margin: 24px 0 4px;
+  }}
+  .sec-hdr h3 {{ color: {C['azul_escuro']}; font-size: 1.1rem; margin: 0; }}
+  .sec-hdr .desc {{ color: {C['cinza_texto']}; font-size: 0.88rem; margin: 3px 0 0; font-style: italic; }}
+
+  /* Disclaimer */
+  .disclaimer {{
+      background: #FFF8E1;
+      border-left: 4px solid #F59E0B;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 0.83rem !important;
+      color: #78350F;
+      margin: 4px 0 16px;
+  }}
+
+  /* RAG cards */
+  .rag-grid {{ display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 16px; }}
+  .rag-card {{
+      flex: 1; min-width: 220px;
+      border-radius: 10px;
+      padding: 14px 18px;
+      display: flex; align-items: flex-start; gap: 12px;
+  }}
+  .rag-card .dot {{
+      width: 18px; height: 18px; border-radius: 50%;
+      flex-shrink: 0; margin-top: 2px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.25);
+  }}
+  .rag-card .body .badge {{
+      font-size: 0.70rem; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      margin: 0 0 3px;
+  }}
+  .rag-card .body .msg {{ font-size: 0.90rem; margin: 0; }}
+  .rag-verde   {{ background:{C['verde_claro']};   border:1px solid {C['verde']}; }}
+  .rag-amarelo {{ background:{C['amarelo_claro']}; border:1px solid {C['amarelo']}; }}
+  .rag-vermelho{{ background:{C['vermelho_claro']};border:1px solid {C['vermelho']}; }}
+  .dot-verde   {{ background:{C['verde']}; }}
+  .dot-amarelo {{ background:{C['amarelo']}; }}
+  .dot-vermelho{{ background:{C['vermelho']}; }}
+  .badge-verde  {{ color:{C['verde']}; }}
+  .badge-amarelo{{ color:{C['amarelo']}; }}
+  .badge-vermelho{{ color:{C['vermelho']}; }}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ── Roteamento por query param ────────────────────────────────────────────────
+pagina_atual = st.query_params.get("page", "resumo")
+if pagina_atual not in PAGINAS:
+    pagina_atual = "resumo"
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def kpi(titulo, valor, delta=None, destaque=False):
+    classe = "kpi-card dest" if destaque else "kpi-card"
+    delta_html = ""
+    if delta is not None:
+        cor   = C["verde"] if delta >= 0 else C["vermelho"]
+        sinal = "▲" if delta >= 0 else "▼"
+        delta_html = f'<small style="color:{cor}">{sinal} {abs(delta):.1f}% vs mes anterior</small>'
+    st.markdown(
+        f'<div class="{classe}"><h4>{titulo}</h4><p>{valor}</p>{delta_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def hdr(titulo, desc=""):
+    desc_html = f'<p class="desc">{desc}</p>' if desc else ""
+    st.markdown(
+        f'<div class="sec-hdr"><h3>{titulo}</h3>{desc_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def aviso_dados():
+    st.markdown(
+        '<div class="disclaimer">⚠️ <strong>Dados sintéticos</strong> — '
+        'simulados com base em benchmarks reais do mercado brasileiro de duas rodas (2024-2026). '
+        'Exclusivamente para fins de demonstração analítica.</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def rag(status, badge, mensagem):
+    """status: 'verde' | 'amarelo' | 'vermelho'"""
+    rotulos = {"verde": "SAUDÁVEL", "amarelo": "ATENÇÃO", "vermelho": "CRÍTICO"}
+    label = badge or rotulos.get(status, status.upper())
+    return (
+        f'<div class="rag-card rag-{status}">'
+        f'<div class="dot dot-{status}"></div>'
+        f'<div class="body">'
+        f'<p class="badge badge-{status}">{label}</p>'
+        f'<p class="msg">{mensagem}</p>'
+        f'</div></div>'
+    )
+
+
+def plt_layout(fig, h=390):
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter,sans-serif", color=C["cinza_texto"], size=14),
+        height=h,
+        margin=dict(l=10, r=10, t=40, b=10),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02,
+            xanchor="right", x=1, bgcolor="rgba(0,0,0,0)",
+            font_size=13,
+        ),
+    )
+    fig.update_xaxes(showgrid=False, linecolor="#D0D8E4", tickfont_size=13)
+    fig.update_yaxes(gridcolor="#EBF0F8", linecolor="#D0D8E4", tickfont_size=13)
+    return fig
+
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown(
+        f'<div style="text-align:center;padding:18px 0 10px;">'
+        f'<span style="font-size:2.4rem;">🏍️</span><br>'
+        f'<span style="font-size:1.2rem;font-weight:900;letter-spacing:.05em;">LM 2 RODAS</span><br>'
+        f'<span style="font-size:0.72rem;opacity:.72;letter-spacing:.10em;text-transform:uppercase;">'
+        f'Inteligência de Mercado</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
+    # Navegacao: pagina ativa = div HTML (laranja); inativas = st.button transparente.
+    # st.button faz apenas st.rerun() — mesma sessao WebSocket, filtros preservados.
+    for key, nome in PAGINAS.items():
+        if key == pagina_atual:
+            # Ativo: renderizado como HTML (nao pode ser clicado, ja esta na pagina)
+            st.markdown(
+                f'<div class="nav-ativo">{ICONES[key]} {nome}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # Inativo: botao estilizado via CSS geral do sidebar
+            if st.button(f"{ICONES[key]} {nome}", key=f"nav_{key}", use_container_width=True):
+                st.query_params["page"] = key
+                st.rerun()
+
+    st.divider()
+
+    df_v_raw   = carregar_vendas()
+    marcas_disp = sorted(df_v_raw["marca"].unique())
+    marcas_sel  = st.multiselect("Marca", marcas_disp, default=marcas_disp, key="f_marca")
+
+    meses_disp  = sorted(df_v_raw["mes"].unique())
+    mes_ini, mes_fim = st.select_slider(
+        "Periodo",
+        options=meses_disp,
+        value=(meses_disp[0], meses_disp[-1]),
+        key="f_per",
+    )
+
+    canais_disp = sorted(df_v_raw["canal"].unique())
+    canais_sel  = st.multiselect("Canal", canais_disp, default=canais_disp, key="f_canal")
+
+    seg_disp  = sorted(df_v_raw["segmento"].unique())
+    seg_sel   = st.multiselect("Segmento", seg_disp, default=seg_disp, key="f_seg")
+
+    st.divider()
+    st.caption("LAGOApar · Nova Lima, MG\nJan/2024 – Abr/2026")
+
+
+# ── Filtros globais ───────────────────────────────────────────────────────────
+dfF = df_v_raw[
+    df_v_raw["marca"].isin(marcas_sel) &
+    (df_v_raw["mes"] >= mes_ini) &
+    (df_v_raw["mes"] <= mes_fim) &
+    df_v_raw["canal"].isin(canais_sel) &
+    df_v_raw["segmento"].isin(seg_sel)
+].copy()
+
+meses_p   = sorted(dfF["mes"].unique())
+m_atual   = meses_p[-1] if meses_p else meses_disp[-1]
+m_ant     = meses_p[-2] if len(meses_p) > 1 else m_atual
+
+rec_total = dfF["receita"].sum()
+qtd_total = dfF["quantidade"].sum()
+mg_total  = dfF["margem_bruta"].sum()
+mg_pct    = mg_total / rec_total * 100 if rec_total else 0
+rec_atual = dfF[dfF["mes"] == m_atual]["receita"].sum()
+rec_ant   = dfF[dfF["mes"] == m_ant]["receita"].sum()
+ticket_md = rec_total / qtd_total if qtd_total else 0
+
+# YoY helpers
+df_2024 = dfF[dfF["mes"].str.startswith("2024")]
+df_2025 = dfF[dfF["mes"].str.startswith("2025")]
+rec_2024 = df_2024["receita"].sum()
+rec_2025 = df_2025["receita"].sum()
+yoy      = delta_pct(rec_2025, rec_2024) if rec_2024 else 0.0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P1 — RESUMO EXECUTIVO
+# ═══════════════════════════════════════════════════════════════════════════════
+if pagina_atual == "resumo":
+    st.title("⚡ Resumo Executivo")
+    aviso_dados()
+    st.caption(f"Período: {mes_ini} → {mes_fim}  |  Marcas selecionadas: {', '.join(marcas_sel)}")
+
+    # KPIs principais
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    with c1: kpi("Receita Total",        fR(rec_total), destaque=True)
+    with c2: kpi("Receita Último Mês",   fR(rec_atual), delta=delta_pct(rec_atual, rec_ant))
+    with c3: kpi("Margem Bruta Média",   f"{mg_pct:.1f}%")
+    with c4: kpi("Unidades Vendidas",    f"{qtd_total:,}")
+    with c5: kpi("Ticket Médio",         fR(ticket_md))
+    with c6: kpi("Crescimento YoY",      f"{yoy:+.1f}%", destaque=(yoy > 0))
+
+    st.divider()
+
+    # Alertas RAG
+    hdr("Painel de Alertas — Semáforo RAG",
+        "Indicadores sintéticos de saúde do negócio com base nos dados do período selecionado")
+
+    d_rec = delta_pct(rec_atual, rec_ant)
+    if d_rec >= 5:
+        card_receita = rag("verde", None, f"Crescimento de {d_rec:.1f}% no último mês — acima do gatilho de +5%")
+    elif d_rec >= 0:
+        card_receita = rag("amarelo", None, f"Crescimento de {d_rec:.1f}% — dentro do intervalo esperado (0–5%)")
+    else:
+        card_receita = rag("vermelho", None, f"Queda de {abs(d_rec):.1f}% na receita mensal — requer plano de ação")
+
+    if mg_pct >= 42:
+        card_margem = rag("verde", None, f"Margem bruta {mg_pct:.1f}% — acima do alvo de 42%")
+    elif mg_pct >= 36:
+        card_margem = rag("amarelo", None, f"Margem bruta {mg_pct:.1f}% — entre 36–42%, zona de atenção")
+    else:
+        card_margem = rag("vermelho", None, f"Margem bruta {mg_pct:.1f}% — abaixo do mínimo de 36%")
+
+    if yoy >= 10:
+        card_yoy = rag("verde", "CRESCIMENTO YoY", f"Receita 2025 supera 2024 em {yoy:.1f}% — ritmo forte")
+    elif yoy >= 0:
+        card_yoy = rag("amarelo", "CRESCIMENTO YoY", f"Crescimento YoY de {yoy:.1f}% — monitorar aceleração")
+    else:
+        card_yoy = rag("vermelho", "CRESCIMENTO YoY", f"Receita 2025 recuou {abs(yoy):.1f}% vs 2024 — investigar causas")
+
+    df_canal_r = dfF.groupby("canal")["receita"].sum()
+    top_canal  = df_canal_r.idxmax() if not df_canal_r.empty else "—"
+    share_top  = df_canal_r.max() / rec_total * 100 if rec_total else 0
+    if share_top <= 50:
+        card_canal = rag("verde", "MIX DE CANAL", f"Canal líder '{top_canal}' com {share_top:.0f}% — diversificação saudável")
+    elif share_top <= 65:
+        card_canal = rag("amarelo", "MIX DE CANAL", f"'{top_canal}' representa {share_top:.0f}% — dependência moderada")
+    else:
+        card_canal = rag("vermelho", "MIX DE CANAL", f"'{top_canal}' concentra {share_top:.0f}% da receita — risco de concentração")
+
+    df_marca_r  = dfF.groupby("marca")["receita"].sum()
+    top_marca   = df_marca_r.idxmax() if not df_marca_r.empty else "—"
+    share_marca = df_marca_r.max() / rec_total * 100 if rec_total else 0
+    if share_marca <= 50:
+        card_marca = rag("verde", "MIX DE MARCA", f"'{top_marca}' lidera com {share_marca:.0f}% — portfólio equilibrado")
+    elif share_marca <= 65:
+        card_marca = rag("amarelo", "MIX DE MARCA", f"'{top_marca}' com {share_marca:.0f}% — dependência de marca acima do ideal")
+    else:
+        card_marca = rag("vermelho", "MIX DE MARCA", f"'{top_marca}' concentra {share_marca:.0f}% — risco de dependência")
+
+    df_cid_r    = dfF.groupby("cidade")["receita"].sum()
+    top_cid     = df_cid_r.idxmax() if not df_cid_r.empty else "—"
+    share_cid   = df_cid_r.max() / rec_total * 100 if rec_total else 0
+    if share_cid <= 20:
+        card_geo = rag("verde", "CONCENTRAÇÃO GEO", f"Sem concentração excessiva: '{top_cid}' com {share_cid:.0f}%")
+    elif share_cid <= 35:
+        card_geo = rag("amarelo", "CONCENTRAÇÃO GEO", f"'{top_cid}' responde por {share_cid:.0f}% — diversificar presença")
+    else:
+        card_geo = rag("vermelho", "CONCENTRAÇÃO GEO", f"'{top_cid}' com {share_cid:.0f}% — alta concentração geográfica")
+
+    # Renderiza o grid de RAG
+    st.markdown(
+        f'<div class="rag-grid">{card_receita}{card_margem}{card_yoy}'
+        f'{card_canal}{card_marca}{card_geo}</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+    col_a, col_b = st.columns([2, 1])
+
+    with col_a:
+        hdr("Receita Mensal por Marca",
+            "Evolução da receita para cada marca do portfólio no período selecionado — "
+            "identifique tendências de crescimento, sazonalidade e comparativos entre marcas.")
+        df_t = dfF.groupby(["mes", "marca"])["receita"].sum().reset_index()
+        # Media movel 3 meses para X11 (marca principal)
+        fig  = px.line(df_t, x="mes", y="receita", color="marca",
+                       color_discrete_map=MARCA_CORES,
+                       labels={"mes": "", "receita": "Receita (R$)", "marca": "Marca"})
+        fig.update_traces(line_width=2.5)
+        st.plotly_chart(plt_layout(fig), use_container_width=True)
+
+    with col_b:
+        hdr("Participação de Receita por Marca",
+            "Share percentual de cada marca no total do período — "
+            "quanto cada marca contribui para o faturamento consolidado.")
+        df_mix = dfF.groupby("marca")["receita"].sum().reset_index()
+        fig = px.pie(df_mix, values="receita", names="marca",
+                     color="marca", color_discrete_map=MARCA_CORES, hole=0.50)
+        fig.update_traces(textfont_size=13)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=390,
+            margin=dict(l=8, r=8, t=40, b=8),
+            legend=dict(orientation="h", y=-0.14, font_size=12),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    col_c, col_d = st.columns(2)
+
+    with col_c:
+        hdr("Top 12 Produtos — Receita Acumulada",
+            "Ranking dos produtos com maior faturamento no período. "
+            "Use para priorizar mix de estoque, negociações e campanhas comerciais.")
+        df_top = (
+            dfF.groupby("produto")["receita"].sum()
+            .nlargest(12).reset_index().sort_values("receita")
+        )
+        fig = px.bar(df_top, x="receita", y="produto", orientation="h",
+                     color_discrete_sequence=[C["azul_medio"]], text_auto=".2s")
+        fig.update_traces(textposition="outside", textfont_size=12)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=420,
+            margin=dict(l=8, r=8, t=30, b=8),
+            yaxis_title="", xaxis_title="Receita (R$)",
+        )
+        fig.update_yaxes(tickfont_size=11)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_d:
+        hdr("Receita por Canal e Segmento",
+            "Distribuição da receita entre os canais de venda (Varejo, E-commerce, "
+            "Distribuidores, Marketplace) separada por segmento Moto vs Bike.")
+        df_cs = dfF.groupby(["canal", "segmento"])["receita"].sum().reset_index()
+        fig = px.bar(df_cs, x="canal", y="receita", color="segmento",
+                     barmode="group",
+                     color_discrete_map={"Moto": C["azul_medio"], "Bike": C["laranja"]},
+                     text_auto=".2s")
+        fig.update_traces(textposition="outside", textfont_size=12)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=420,
+            margin=dict(l=8, r=8, t=40, b=8),
+            yaxis_title="Receita (R$)", xaxis_title="",
+            legend=dict(orientation="h", y=1.06, font_size=13),
+        )
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(gridcolor="#EBF0F8")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Crescimento YoY por marca
+    st.divider()
+    hdr("Crescimento Ano a Ano por Marca (2024 vs 2025)",
+        "Comparativo de receita entre 2024 e 2025 para cada marca. "
+        "Mostra quais marcas ganharam ou perderam tração ao longo do ano.")
+    df_yoy = dfF.copy()
+    df_yoy["ano"] = df_yoy["mes"].str[:4]
+    df_yoy_gr = df_yoy[df_yoy["ano"].isin(["2024", "2025"])].groupby(
+        ["ano", "marca"])["receita"].sum().reset_index()
+    df_pivot = df_yoy_gr.pivot(index="marca", columns="ano", values="receita").fillna(0).reset_index()
+    if "2024" in df_pivot.columns and "2025" in df_pivot.columns:
+        df_pivot["crescimento_pct"] = (
+            (df_pivot["2025"] - df_pivot["2024"]) / df_pivot["2024"].replace(0, np.nan) * 100
+        ).round(1)
+        df_pivot = df_pivot.sort_values("crescimento_pct")
+        cores_yoy = [C["verde"] if v >= 0 else C["vermelho"] for v in df_pivot["crescimento_pct"]]
+        fig = go.Figure(go.Bar(
+            x=df_pivot["crescimento_pct"], y=df_pivot["marca"],
+            orientation="h", marker_color=cores_yoy,
+            text=[f"{v:+.1f}%" for v in df_pivot["crescimento_pct"]],
+            textposition="outside", textfont_size=13,
+        ))
+        fig.add_vline(x=0, line_color=C["azul_escuro"], line_width=1.5)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=300,
+            margin=dict(l=8, r=8, t=30, b=8),
+            xaxis_title="Variação % (2025 vs 2024)", yaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Selecione um período que inclua 2024 e 2025 para visualizar o comparativo YoY.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P2 — FORCA DE VENDAS B2B
+# ═══════════════════════════════════════════════════════════════════════════════
+elif pagina_atual == "comercial":
+    st.title("📈 Força de Vendas B2B")
+    aviso_dados()
+    st.info(
+        "**Contexto:** A LM 2 Rodas opera como distribuidora B2B — vende para mais de 20.000 "
+        "lojistas e distribuidores em todo o Brasil. Esta página acompanha o desempenho dos "
+        "representantes comerciais regionais e dos canais de distribuição.",
+        icon="ℹ️",
+    )
+
+    df_ve = carregar_vendedores()
+    dfV   = df_ve[(df_ve["mes"] >= mes_ini) & (df_ve["mes"] <= mes_fim)].copy()
+
+    t_real   = dfV["receita_realizada"].sum()
+    t_meta   = dfV["meta_receita"].sum()
+    ating    = t_real / t_meta * 100 if t_meta else 0
+    tick_med = dfV["ticket_medio"].mean()
+    cli_tot  = dfV["clientes_atendidos"].sum()
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: kpi("Receita Realizada",    fR(t_real), destaque=True)
+    with c2: kpi("Meta Acumulada",       fR(t_meta))
+    with c3: kpi("Atingimento Geral",    f"{ating:.1f}%")
+    with c4: kpi("Clientes Atendidos",   f"{cli_tot:,}")
+
+    st.divider()
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        hdr("Atingimento de Meta por Representante (%)",
+            "Percentual da meta de receita atingida por cada representante comercial. "
+            "Verde = 100% ou acima. Amarelo = 90–100%. Vermelho = abaixo de 90%.")
+        df_va = dfV.groupby("vendedor").agg(
+            realizado=("receita_realizada", "sum"),
+            meta=("meta_receita", "sum"),
+        ).reset_index()
+        df_va["ating"] = (df_va["realizado"] / df_va["meta"] * 100).round(1)
+        df_va = df_va.sort_values("ating")
+        cores = [
+            C["verde"] if v >= 100 else C["amarelo"] if v >= 90 else C["vermelho"]
+            for v in df_va["ating"]
+        ]
+        fig = go.Figure(go.Bar(
+            x=df_va["ating"], y=df_va["vendedor"],
+            orientation="h", marker_color=cores,
+            text=[f"{v:.1f}%" for v in df_va["ating"]],
+            textposition="outside", textfont_size=13,
+        ))
+        fig.add_vline(x=100, line_dash="dash", line_color=C["laranja"], line_width=2,
+                      annotation_text="Meta 100%", annotation_font_size=13)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=400,
+            margin=dict(l=8, r=8, t=36, b=8),
+            xaxis_title="% da Meta", yaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=12)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_b:
+        hdr("Evolução Mensal de Receita por Representante",
+            "Acompanhamento mês a mês da receita de cada representante. "
+            "Permite identificar sazonalidade, quedas pontuais e tendências individuais.")
+        df_tv = dfV.groupby(["mes", "vendedor"])["receita_realizada"].sum().reset_index()
+        fig   = px.line(df_tv, x="mes", y="receita_realizada", color="vendedor",
+                        labels={"mes": "", "receita_realizada": "Receita (R$)", "vendedor": ""})
+        fig.update_traces(line_width=2)
+        st.plotly_chart(plt_layout(fig, h=400), use_container_width=True)
+
+    hdr("Receita vs Meta por Canal de Distribuição",
+        "Comparativo entre receita realizada e meta estabelecida para cada canal B2B — "
+        "Varejo Físico (clientes lojistas), E-commerce, Distribuidores e Marketplace.")
+    df_canal_v = dfF.groupby("canal")["receita"].sum().reset_index()
+    df_canal_v["meta_canal"] = df_canal_v["receita"] * np.random.uniform(0.88, 1.18,
+                                                                          size=len(df_canal_v))
+    fig = go.Figure()
+    fig.add_trace(go.Bar(name="Meta", x=df_canal_v["canal"], y=df_canal_v["meta_canal"],
+                         marker_color=C["azul_claro"], opacity=0.7))
+    fig.add_trace(go.Bar(name="Realizado", x=df_canal_v["canal"], y=df_canal_v["receita"],
+                         marker_color=C["azul_escuro"]))
+    fig.update_layout(
+        barmode="group", paper_bgcolor="rgba(0,0,0,0)", height=340,
+        margin=dict(l=8, r=8, t=36, b=8),
+        legend=dict(orientation="h", y=1.06, font_size=13),
+        yaxis_title="Receita (R$)", xaxis_title="",
+    )
+    fig.update_xaxes(showgrid=False, tickfont_size=13)
+    fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+    hdr("Ranking de Representantes no Período",
+        "Visão consolidada do desempenho de cada representante — receita, meta e percentual de atingimento.")
+    df_det = df_va.sort_values("ating", ascending=False).copy()
+    df_det["realizado_fmt"] = df_det["realizado"].map(fR)
+    df_det["meta_fmt"]      = df_det["meta"].map(fR)
+    df_det["ating_fmt"]     = df_det["ating"].map(lambda x: f"{x:.1f}%")
+    st.dataframe(
+        df_det[["vendedor", "realizado_fmt", "meta_fmt", "ating_fmt"]]
+        .rename(columns={
+            "vendedor": "Representante",
+            "realizado_fmt": "Receita Realizada",
+            "meta_fmt": "Meta",
+            "ating_fmt": "Atingimento (%)",
+        }),
+        use_container_width=True, hide_index=True,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P3 — ANALISE POR PRODUTO
+# ═══════════════════════════════════════════════════════════════════════════════
+elif pagina_atual == "produto":
+    st.title("🏷️ Análise por Produto")
+    aviso_dados()
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        hdr("Receita por Categoria de Produto",
+            "Faturamento acumulado de cada categoria no período selecionado. "
+            "Identifica quais linhas de produto são mais relevantes para a receita.")
+        df_cat = (dfF.groupby("categoria")["receita"].sum()
+                  .reset_index().sort_values("receita", ascending=False))
+        fig = px.bar(df_cat, x="categoria", y="receita",
+                     color="categoria",
+                     color_discrete_sequence=[
+                         C["azul_escuro"], C["azul_medio"], C["azul_claro"],
+                         C["laranja"], "#7D3C98", "#00897B", C["vermelho"], "#E67E22"
+                     ],
+                     text_auto=".2s")
+        fig.update_traces(textposition="outside", textfont_size=12)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=380,
+            margin=dict(l=8, r=8, t=30, b=8),
+            showlegend=False, yaxis_title="Receita (R$)", xaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=12)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_b:
+        hdr("Margem Bruta por Categoria (%)",
+            "Percentual de margem bruta de cada categoria. Permite identificar quais linhas "
+            "são mais rentáveis e onde há pressão de custo ou desconto excessivo.")
+        df_mg = dfF.groupby("categoria").agg(
+            receita=("receita", "sum"),
+            margem=("margem_bruta", "sum"),
+        ).reset_index()
+        df_mg = df_mg[df_mg["receita"] > 0].copy()
+        df_mg["mg_pct"] = (df_mg["margem"] / df_mg["receita"] * 100).round(1)
+        df_mg = df_mg.sort_values("mg_pct")
+        fig = px.bar(df_mg, x="mg_pct", y="categoria", orientation="h",
+                     color="mg_pct",
+                     color_continuous_scale=[
+                         [0, C["vermelho"]], [0.45, C["amarelo"]], [1, C["verde"]]
+                     ],
+                     range_color=[25, 55], text_auto=".1f")
+        fig.update_traces(texttemplate="%{x:.1f}%", textposition="outside", textfont_size=12)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=380,
+            margin=dict(l=8, r=8, t=30, b=8),
+            coloraxis_showscale=False,
+            xaxis_title="Margem Bruta (%)", yaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(tickfont_size=12)
+        st.plotly_chart(fig, use_container_width=True)
+
+    hdr("Heatmap de Receita: Marca × Categoria",
+        "Mapa de calor que cruza cada marca com suas categorias de produto. "
+        "Células mais escuras = maior receita. Identifica gaps de portfólio e concentração.")
+    df_heat = dfF.pivot_table(
+        index="marca", columns="categoria", values="receita", aggfunc="sum", fill_value=0
+    )
+    fig = px.imshow(
+        df_heat,
+        color_continuous_scale=[[0, C["cinza_claro"]], [0.4, C["azul_claro"]], [1, C["azul_escuro"]]],
+        text_auto=".2s", aspect="auto",
+    )
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", height=290,
+        margin=dict(l=8, r=8, t=36, b=8),
+        font_size=13,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ABC Curve
+    st.divider()
+    hdr("Curva ABC de Produtos — Classificação por Receita",
+        "Classifica os SKUs em três grupos: A (top 80% da receita), B (próximos 15%) e C (5% restante). "
+        "Produtos A exigem prioridade em estoque, margem e reposição; C podem ser revisados.")
+    df_abc = dfF.groupby(["sku", "produto", "marca", "categoria"]).agg(
+        receita=("receita", "sum"),
+        margem=("margem_bruta", "sum"),
+        qtd=("quantidade", "sum"),
+    ).reset_index()
+    df_abc = df_abc[df_abc["receita"] > 0].sort_values("receita", ascending=False)
+    df_abc["receita_acum"] = df_abc["receita"].cumsum()
+    total_abc = df_abc["receita"].sum()
+    df_abc["pct_acum"] = df_abc["receita_acum"] / total_abc * 100
+    df_abc["classe"] = df_abc["pct_acum"].apply(
+        lambda x: "A" if x <= 80 else ("B" if x <= 95 else "C")
+    )
+    df_abc["mg_pct"] = (df_abc["margem"] / df_abc["receita"] * 100).round(1)
+
+    c_abc1, c_abc2, c_abc3 = st.columns(3)
+    for cls, col, cor in [("A", c_abc1, C["verde"]), ("B", c_abc2, C["amarelo"]), ("C", c_abc3, C["vermelho"])]:
+        n = (df_abc["classe"] == cls).sum()
+        r = df_abc[df_abc["classe"] == cls]["receita"].sum()
+        with col:
+            st.markdown(
+                f'<div style="background:{cor}18;border:1px solid {cor};border-radius:10px;'
+                f'padding:14px 18px;text-align:center;">'
+                f'<p style="font-size:1.6rem;font-weight:800;color:{cor};margin:0;">{n} SKUs</p>'
+                f'<p style="font-size:0.9rem;color:{C["cinza_texto"]};margin:4px 0 0;">'
+                f'Classe {cls} — {fR(r)} ({r/total_abc*100:.0f}% da receita) </p>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    col_abc_a, col_abc_b = st.columns(2)
+    with col_abc_a:
+        fig_abc = px.bar(
+            df_abc.head(25), x="receita", y="produto", orientation="h",
+            color="classe",
+            color_discrete_map={"A": C["verde"], "B": C["amarelo"], "C": C["vermelho"]},
+            text_auto=".2s",
+        )
+        fig_abc.update_traces(textposition="outside", textfont_size=11)
+        fig_abc.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=540,
+            margin=dict(l=8, r=8, t=36, b=8),
+            yaxis_title="", xaxis_title="Receita (R$)",
+            legend=dict(orientation="h", y=1.04, font_size=13),
+        )
+        fig_abc.update_yaxes(tickfont_size=10)
+        fig_abc.update_xaxes(showgrid=False, tickfont_size=13)
+        st.plotly_chart(fig_abc, use_container_width=True)
+
+    with col_abc_b:
+        # Scatter receita x margem pct colorido por classe ABC
+        fig_sc = px.scatter(
+            df_abc, x="receita", y="mg_pct",
+            color="classe",
+            color_discrete_map={"A": C["verde"], "B": C["amarelo"], "C": C["vermelho"]},
+            size="qtd", hover_name="produto", size_max=35,
+            labels={"receita": "Receita (R$)", "mg_pct": "Margem (%)", "classe": "Classe ABC"},
+        )
+        fig_sc.add_hline(y=df_abc["mg_pct"].mean(), line_dash="dash",
+                         line_color=C["azul_escuro"],
+                         annotation_text=f"Média {df_abc['mg_pct'].mean():.1f}%",
+                         annotation_font_size=12)
+        st.plotly_chart(plt_layout(fig_sc, h=540), use_container_width=True)
+
+    hdr("Catálogo Completo de Produtos")
+    df_cat_full = carregar_catalogo()
+    st.dataframe(
+        df_cat_full[["sku", "nome", "marca", "categoria", "segmento", "preco", "custo", "margem_pct"]]
+        .rename(columns={
+            "sku": "SKU", "nome": "Produto", "marca": "Marca",
+            "categoria": "Categoria", "segmento": "Segmento",
+            "preco": "Preço (R$)", "custo": "Custo (R$)", "margem_pct": "Margem (%)",
+        }),
+        use_container_width=True, hide_index=True,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P4 — ANALISE REGIONAL
+# ═══════════════════════════════════════════════════════════════════════════════
+elif pagina_atual == "regional":
+    st.title("🗺️ Análise Regional")
+    aviso_dados()
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        hdr("Receita por Região do Brasil",
+            "Faturamento acumulado por macro-região. Reflete a cobertura nacional "
+            "da LM 2 Rodas com representantes em todos os estados.")
+        df_reg = dfF.groupby("regiao")["receita"].sum().reset_index().sort_values("receita", ascending=False)
+        fig = px.bar(df_reg, x="regiao", y="receita",
+                     color="receita",
+                     color_continuous_scale=[[0, C["azul_claro"]], [1, C["azul_escuro"]]],
+                     text_auto=".2s")
+        fig.update_traces(textposition="outside", textfont_size=12)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=380,
+            margin=dict(l=8, r=8, t=30, b=8),
+            coloraxis_showscale=False,
+            yaxis_title="Receita (R$)", xaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_b:
+        hdr("Top 15 Cidades — Receita",
+            "Ranking das cidades com maior faturamento. Cor indica a macro-região. "
+            "Orienta a alocação de representantes e esforço comercial por praça.")
+        df_cid = dfF.groupby(["cidade", "uf", "regiao"])["receita"].sum().reset_index()
+        df_cid = df_cid.nlargest(15, "receita").sort_values("receita")
+        df_cid["cidade_uf"] = df_cid["cidade"] + " (" + df_cid["uf"] + ")"
+        fig = px.bar(df_cid, x="receita", y="cidade_uf", orientation="h",
+                     color="regiao",
+                     color_discrete_sequence=[
+                         C["azul_escuro"], C["azul_medio"], C["laranja"],
+                         C["verde"], C["azul_claro"]
+                     ],
+                     text_auto=".2s")
+        fig.update_traces(textposition="outside", textfont_size=11)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=460,
+            margin=dict(l=8, r=8, t=30, b=8),
+            yaxis_title="", xaxis_title="Receita (R$)",
+            legend=dict(orientation="h", y=1.05, font_size=12),
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(tickfont_size=11)
+        st.plotly_chart(fig, use_container_width=True)
+
+    hdr("Heatmap: Receita por Região × Marca",
+        "Mapa de calor cruzando região com marca. Identifica quais marcas dominam "
+        "cada território e onde há oportunidades de expansão para marcas sub-representadas.")
+    df_rm = dfF.pivot_table(
+        index="regiao", columns="marca", values="receita", aggfunc="sum", fill_value=0
+    )
+    fig = px.imshow(
+        df_rm,
+        color_continuous_scale=[[0, C["cinza_claro"]], [0.4, C["azul_claro"]], [1, C["azul_escuro"]]],
+        text_auto=".2s", aspect="auto",
+    )
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", height=290,
+        margin=dict(l=8, r=8, t=36, b=8), font_size=13,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    col_c, col_d = st.columns(2)
+
+    with col_c:
+        hdr("Evolução de Receita por Região — Mensal",
+            "Tendência mensal de cada macro-região. Permite identificar regiões "
+            "em crescimento, sazonalidade local e regiões que precisam de atenção.")
+        df_revol = dfF.groupby(["mes", "regiao"])["receita"].sum().reset_index()
+        fig = px.line(df_revol, x="mes", y="receita", color="regiao",
+                      labels={"mes": "", "receita": "Receita (R$)", "regiao": "Regiao"})
+        fig.update_traces(line_width=2.2)
+        st.plotly_chart(plt_layout(fig, h=370), use_container_width=True)
+
+    with col_d:
+        hdr("Receita por UF — Participação %",
+            "Share de cada estado no faturamento total. Mostra em quais UFs "
+            "a empresa tem maior penetração e onde há espaço para crescer.")
+        df_uf = dfF.groupby("uf")["receita"].sum().reset_index().sort_values("receita", ascending=False).head(15)
+        df_uf["share"] = (df_uf["receita"] / df_uf["receita"].sum() * 100).round(1)
+        fig = px.bar(df_uf, x="uf", y="share",
+                     color_discrete_sequence=[C["azul_medio"]], text_auto=".1f")
+        fig.update_traces(texttemplate="%{y:.1f}%", textposition="outside", textfont_size=12)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=370,
+            margin=dict(l=8, r=8, t=30, b=8),
+            yaxis_title="Share (%)", xaxis_title="Estado (UF)",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P5 — ESTOQUE & GIRO
+# ═══════════════════════════════════════════════════════════════════════════════
+elif pagina_atual == "estoque":
+    st.title("📦 Estoque & Giro")
+    aviso_dados()
+
+    df_est = carregar_estoque()
+    # Bug fix: aplica filtro de marcas ao estoque do ultimo mes
+    df_est_ult = df_est[
+        df_est["marca"].isin(marcas_sel) &
+        (df_est["mes"] == df_est["mes"].max())
+    ].copy()
+
+    t_est_val = df_est_ult["estoque_valor"].sum()
+    giro_med  = df_est_ult["giro_estoque"].mean() if not df_est_ult.empty else 0
+    cob_med   = df_est_ult["cobertura_dias"].mean() if not df_est_ult.empty else 0
+    n_crit    = (df_est_ult["cobertura_dias"] < 15).sum()
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: kpi("Valor em Estoque (Custo)", fR(t_est_val), destaque=True)
+    with c2: kpi("Giro Médio de Estoque",    f"{giro_med:.2f}")
+    with c3: kpi("Cobertura Média",          f"{cob_med:.0f} dias")
+    with c4: kpi("SKUs em Nível Crítico",    str(int(n_crit)))
+
+    st.divider()
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        hdr("Valor em Estoque por Categoria (R$ custo)",
+            "Valor total do estoque ao custo de aquisição por categoria. "
+            "Indica onde o capital está imobilizado e permite priorizar liquidez.")
+        df_ec = (df_est_ult.groupby("categoria")["estoque_valor"].sum()
+                 .reset_index().sort_values("estoque_valor", ascending=False))
+        fig = px.bar(df_ec, x="categoria", y="estoque_valor",
+                     color_discrete_sequence=[C["azul_medio"]], text_auto=".2s")
+        fig.update_traces(textposition="outside", textfont_size=12)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=370,
+            margin=dict(l=8, r=8, t=30, b=8),
+            yaxis_title="Valor (R$)", xaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_b:
+        hdr("Índice de Giro de Estoque por Marca",
+            "Quantas vezes o estoque de cada marca 'girou' no mês mais recente. "
+            "Giro alto = produto vendendo bem; giro baixo = risco de encalhamento.")
+        df_eg = (df_est_ult.groupby("marca")["giro_estoque"].mean()
+                 .reset_index().sort_values("giro_estoque"))
+        cores_giro = [C["verde"] if v >= 0.8 else C["amarelo"] if v >= 0.4 else C["vermelho"]
+                      for v in df_eg["giro_estoque"]]
+        fig = go.Figure(go.Bar(
+            x=df_eg["giro_estoque"], y=df_eg["marca"],
+            orientation="h", marker_color=cores_giro,
+            text=[f"{v:.2f}" for v in df_eg["giro_estoque"]],
+            textposition="outside", textfont_size=13,
+        ))
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=370,
+            margin=dict(l=8, r=8, t=30, b=8),
+            xaxis_title="Giro (un. vendidas / estoque)", yaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+    hdr("Evolução do Valor em Estoque — Mensal",
+        "Histórico do valor imobilizado em estoque (ao custo) por marca. "
+        "Picos podem indicar compras sazonais ou acúmulo de produtos sem giro.")
+    df_est_filt = df_est[
+        df_est["marca"].isin(marcas_sel) &
+        (df_est["mes"] >= mes_ini) & (df_est["mes"] <= mes_fim)
+    ]
+    df_est_tr = df_est_filt.groupby(["mes", "marca"])["estoque_valor"].sum().reset_index()
+    fig = px.line(df_est_tr, x="mes", y="estoque_valor", color="marca",
+                  color_discrete_map=MARCA_CORES,
+                  labels={"mes": "", "estoque_valor": "Valor em Estoque (R$)", "marca": "Marca"})
+    fig.update_traces(line_width=2.2)
+    st.plotly_chart(plt_layout(fig, h=330), use_container_width=True)
+
+    st.divider()
+    hdr("Alertas: Produtos com Cobertura Crítica (< 15 dias)",
+        "SKUs cujo estoque atual é insuficiente para cobrir menos de 15 dias de vendas. "
+        "Requerem reposição urgente para evitar ruptura e perda de venda.")
+    df_crit = df_est_ult[df_est_ult["cobertura_dias"] < 15].sort_values("cobertura_dias")
+    if df_crit.empty:
+        st.success("✅ Nenhum produto com cobertura critica no momento.")
+    else:
+        st.warning(f"⚠️ {len(df_crit)} SKUs com cobertura abaixo de 15 dias — avaliar reposição imediata.")
+        st.dataframe(
+            df_crit[["sku", "produto", "marca", "estoque_unidades", "vendido_mes", "cobertura_dias"]]
+            .rename(columns={
+                "sku": "SKU", "produto": "Produto", "marca": "Marca",
+                "estoque_unidades": "Estoque (un)", "vendido_mes": "Vendido/mes",
+                "cobertura_dias": "Cobertura (dias)",
+            }),
+            use_container_width=True, hide_index=True,
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P6 — METAS & FP&A
+# ═══════════════════════════════════════════════════════════════════════════════
+elif pagina_atual == "metas":
+    st.title("🎯 Metas & FP&A")
+    aviso_dados()
+
+    df_mt  = carregar_metas()
+    df_mtF = df_mt[
+        df_mt["marca"].isin(marcas_sel) &
+        (df_mt["mes"] >= mes_ini) & (df_mt["mes"] <= mes_fim)
+    ].copy()
+
+    t_real = df_mtF["receita_realizada"].sum()
+    t_meta = df_mtF["meta_receita"].sum()
+    var    = delta_pct(t_real, t_meta)
+    mg_acc = df_mtF["margem_bruta"].sum()
+    mg_pct_m = mg_acc / t_real * 100 if t_real else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: kpi("Receita Realizada",  fR(t_real), destaque=True)
+    with c2: kpi("Meta Acumulada",     fR(t_meta))
+    with c3: kpi("Variação vs Meta",   f"{var:+.1f}%")
+    with c4: kpi("Margem Bruta Média", f"{mg_pct_m:.1f}%")
+
+    st.divider()
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        hdr("Realizado vs Meta por Marca",
+            "Comparativo entre receita realizada e meta estabelecida para cada marca. "
+            "Barras sobrepostas revelam quais marcas superaram ou ficaram abaixo do planejado (acumulado no período).")
+        df_bm = df_mtF.groupby("marca").agg(
+            realizado=("receita_realizada", "sum"),
+            meta=("meta_receita", "sum"),
+        ).reset_index()
+        fig = go.Figure()
+        fig.add_trace(go.Bar(name="Meta", x=df_bm["marca"], y=df_bm["meta"],
+                             marker_color=C["azul_claro"], opacity=0.7))
+        fig.add_trace(go.Bar(name="Realizado", x=df_bm["marca"], y=df_bm["realizado"],
+                             marker_color=C["azul_escuro"]))
+        fig.update_layout(
+            barmode="group",
+            paper_bgcolor="rgba(0,0,0,0)", height=370,
+            margin=dict(l=8, r=8, t=36, b=8),
+            legend=dict(orientation="h", y=1.05, font_size=13),
+            yaxis_title="R$", xaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_b:
+        hdr("Evolução Mensal — Realizado vs Meta",
+            "Série histórica da receita realizada (área preenchida) versus a meta mensal "
+            "(linha tracejada). A área entre as linhas representa o gap a ser gerenciado.")
+        df_tM = df_mtF.groupby("mes").agg(
+            realizado=("receita_realizada", "sum"),
+            meta=("meta_receita", "sum"),
+        ).reset_index()
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df_tM["mes"], y=df_tM["meta"],
+            name="Meta", line=dict(dash="dash", color=C["laranja"], width=2),
+            mode="lines",
+        ))
+        fig.add_trace(go.Scatter(
+            x=df_tM["mes"], y=df_tM["realizado"],
+            name="Realizado", line=dict(color=C["azul_escuro"], width=2.5),
+            fill="tonexty", fillcolor="rgba(0,85,165,0.10)", mode="lines",
+        ))
+        st.plotly_chart(plt_layout(fig, h=370), use_container_width=True)
+
+    col_c, col_d = st.columns(2)
+
+    with col_c:
+        hdr("Variação % vs Meta — Linha do Tempo",
+            "Desvio percentual mensal entre receita realizada e meta. "
+            "Barras verdes = superou a meta; barras vermelhas = ficou abaixo.")
+        df_var = df_mtF.groupby("mes").agg(
+            realizado=("receita_realizada", "sum"),
+            meta=("meta_receita", "sum"),
+        ).reset_index()
+        df_var["var_pct"] = (
+            (df_var["realizado"] - df_var["meta"]) / df_var["meta"] * 100
+        ).round(1)
+        fig = px.bar(df_var, x="mes", y="var_pct",
+                     color=df_var["var_pct"].apply(lambda x: "Acima" if x >= 0 else "Abaixo"),
+                     color_discrete_map={"Acima": C["verde"], "Abaixo": C["vermelho"]},
+                     text_auto=".1f")
+        fig.add_hline(y=0, line_color=C["azul_escuro"], line_width=1.5)
+        fig.update_traces(texttemplate="%{y:+.1f}%", textposition="outside", textfont_size=11)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=340,
+            margin=dict(l=8, r=8, t=30, b=8),
+            showlegend=False, yaxis_title="Var. % vs Meta", xaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=12)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_d:
+        hdr("Margem Bruta por Marca — Acumulado",
+            "Percentual de margem bruta por marca no período — cada barra reflete a estrutura de custo "
+            "específica da marca. WG Sports e Vessel lideram margem; Sentec e HighOne têm estrutura de custo maior.")
+        df_mg_m = df_mtF.groupby("marca").agg(
+            margem=("margem_bruta", "sum"),
+            receita=("receita_realizada", "sum"),
+        ).reset_index()
+        df_mg_m = df_mg_m[df_mg_m["receita"] > 0].copy()
+        df_mg_m["mg_pct"] = (df_mg_m["margem"] / df_mg_m["receita"] * 100).round(1)
+        df_mg_m = df_mg_m.sort_values("mg_pct")
+        fig = px.bar(df_mg_m, x="mg_pct", y="marca", orientation="h",
+                     color="marca", color_discrete_map=MARCA_CORES,
+                     text_auto=".1f")
+        fig.update_traces(texttemplate="%{x:.1f}%", textposition="outside", textfont_size=12)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=340,
+            margin=dict(l=8, r=8, t=30, b=8),
+            showlegend=False, xaxis_title="Margem Bruta (%)", yaxis_title="",
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P7 — PROJECOES
+# ═══════════════════════════════════════════════════════════════════════════════
+elif pagina_atual == "projecoes":
+    st.title("🔮 Projeções — Mai–Out 2026")
+    aviso_dados()
+
+    df_pr = carregar_projecoes()
+
+    c1, c2, c3 = st.columns(3)
+    with c1: kpi("Receita Projetada (6 meses)", fR(df_pr["receita_projetada"].sum()), destaque=True)
+    with c2: kpi("Cenário Otimista",             fR(df_pr["receita_otimista"].sum()))
+    with c3: kpi("Cenário Pessimista",           fR(df_pr["receita_pessimista"].sum()))
+
+    # ── Caixa de explicação do modelo ────────────────────────────────────────
+    with st.expander("📐 Metodologia e Confiabilidade do Modelo", expanded=True):
+        # Calcula métricas de confiabilidade a partir do histórico
+        df_hist_all = dfF.groupby("mes")["receita"].sum().reset_index().sort_values("mes")
+        rec_series  = df_hist_all["receita"].values
+        # Coeficiente de Variação (CoV) — mede dispersão relativa da série
+        cov = (rec_series.std() / rec_series.mean() * 100) if rec_series.mean() > 0 else 0
+        # MAPE in-sample: aplica o modelo base nos últimos 6 meses conhecidos e compara
+        if len(rec_series) >= 7:
+            import pandas as _pd
+            meses_hist = df_hist_all["mes"].values
+            erros = []
+            for i in range(-6, 0):
+                real_i = rec_series[i]
+                base_i = rec_series[i - 1]  # mês anterior como âncora
+                mes_dt_i = _pd.to_datetime(meses_hist[i])
+                saz_i    = float(np.array([0.82,0.79,0.85,0.88,0.91,0.95,
+                                           1.12,1.04,0.97,1.05,1.18,1.24])[mes_dt_i.month - 1])
+                proj_i   = base_i * saz_i * 1.014
+                erros.append(abs(real_i - proj_i) / real_i * 100 if real_i > 0 else 0)
+            mape = float(np.mean(erros))
+        else:
+            mape = 0.0
+        # Intervalos implícitos dos cenários
+        ot_spread = (df_pr["receita_otimista"].mean() / df_pr["receita_projetada"].mean() - 1) * 100
+        pe_spread = (1 - df_pr["receita_pessimista"].mean() / df_pr["receita_projetada"].mean()) * 100
+
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        with col_m1:
+            st.metric("Modelo Base", "Sazonalidade + Tendência",
+                      help="Crescimento composto mensal sobre a base do último mês realizado")
+        with col_m2:
+            cor_mape = "🟢" if mape < 8 else "🟡" if mape < 15 else "🔴"
+            st.metric(f"{cor_mape} MAPE (últimos 6 meses)", f"{mape:.1f}%",
+                      help="Mean Absolute Percentage Error — erro médio absoluto percentual do modelo nos últimos 6 meses históricos")
+        with col_m3:
+            cor_cov = "🟢" if cov < 20 else "🟡" if cov < 35 else "🔴"
+            st.metric(f"{cor_cov} CoV da Série", f"{cov:.1f}%",
+                      help="Coeficiente de Variação — quanto a série histórica oscila em relação à média. Valores < 20% indicam série estável")
+        with col_m4:
+            st.metric("Spread Cenários", f"±{(ot_spread + pe_spread)/2:.1f}%",
+                      help="Amplitude média entre o cenário otimista e pessimista em relação ao cenário base")
+
+        st.markdown("""
+**Como o modelo funciona:**
+
+| Componente | Descrição | Taxa aplicada |
+|---|---|---|
+| **Tendência de longo prazo** | Crescimento orgânico composto mês a mês | +1,4% a.m. (~18% a.a.) |
+| **Ajuste sazonal** | Índice calibrado com sazonalidade do mercado de duas rodas brasileiro | Jan–Dez (0,79 a 1,24) |
+| **Cenário Otimista** | Crescimento acelerado — demanda acima do esperado, expansão de canais | +2,5% a.m. |
+| **Cenário Pessimista** | Crescimento conservador — pressão de custos, juros elevados, câmbio | +0,5% a.m. |
+
+**Limitações e premissas:**
+- O modelo é determinístico (sem componente estocástico); não captura eventos exógenos (recall, disrupção de fornecedor, mudança regulatória).
+- A margem projetada é estimada com distribuição uniforme calibrada ao histórico (37–45%) — sem decomposição por marca ou canal.
+- Recomenda-se revisão mensal dos cenários conforme novos dados de sell-out forem disponibilizados.
+""")
+
+    hdr("Cenários de Receita — Histórico + Projetado",
+        "Gráfico combinando os últimos meses realizados com os três cenários de projeção "
+        "(base, otimista, pessimista) para mai–out/2026. A área hachurada delimita o período projetado. "
+        "Cenários calibrados com sazonalidade histórica e taxas de crescimento diferenciadas.")
+    df_hist6 = dfF.groupby("mes")["receita"].sum().reset_index().tail(6)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df_hist6["mes"], y=df_hist6["receita"],
+        name="Historico", line=dict(color=C["azul_escuro"], width=2.5),
+        mode="lines+markers", marker_size=8,
+    ))
+    fig.add_trace(go.Scatter(
+        x=df_pr["mes"], y=df_pr["receita_pessimista"],
+        name="Pessimista", line=dict(color=C["vermelho"], dash="dot", width=2),
+        mode="lines",
+    ))
+    fig.add_trace(go.Scatter(
+        x=df_pr["mes"], y=df_pr["receita_projetada"],
+        name="Base", line=dict(color=C["azul_medio"], width=3),
+        mode="lines+markers", marker_size=9,
+    ))
+    fig.add_trace(go.Scatter(
+        x=df_pr["mes"], y=df_pr["receita_otimista"],
+        name="Otimista", line=dict(color=C["verde"], dash="dot", width=2),
+        fill="tonexty", fillcolor="rgba(27,122,52,0.07)", mode="lines",
+    ))
+    fig.add_vrect(
+        x0=df_pr["mes"].iloc[0], x1=df_pr["mes"].iloc[-1],
+        fillcolor=C["azul_claro"], opacity=0.05,
+        annotation_text="Periodo Projetado",
+        annotation_font_size=13,
+        annotation_position="top left",
+    )
+    st.plotly_chart(plt_layout(fig, h=460), use_container_width=True)
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        hdr("Margem Bruta Projetada por Mês (%)",
+            "Estimativa de margem bruta para cada mês do semestre projetado. "
+            "A linha tracejada marca o alvo corporativo de 40%. Valores abaixo exigem revisão de pricing.")
+        fig = px.bar(df_pr, x="mes", y="margem_projetada_pct",
+                     color_discrete_sequence=[C["azul_medio"]], text_auto=".1f")
+        fig.update_traces(texttemplate="%{y:.1f}%", textposition="outside", textfont_size=12)
+        fig.add_hline(y=40, line_dash="dash", line_color=C["laranja"], line_width=2,
+                      annotation_text="Meta 40%", annotation_font_size=13)
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", height=320,
+            margin=dict(l=8, r=8, t=30, b=8),
+            yaxis_title="Margem (%)", xaxis_title="",
+            yaxis_range=[28, 55],
+        )
+        fig.update_xaxes(showgrid=False, tickfont_size=13)
+        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_b:
+        hdr("Tabela Comparativa de Cenários",
+            "Resumo numérico dos três cenários para cada mês projetado. "
+            "Use para construir o planejamento orçamentário e definir gatilhos de revisão.")
+        df_show = df_pr.copy()
+        df_show["receita_projetada"]    = df_show["receita_projetada"].map(fR)
+        df_show["receita_otimista"]     = df_show["receita_otimista"].map(fR)
+        df_show["receita_pessimista"]   = df_show["receita_pessimista"].map(fR)
+        df_show["margem_projetada_pct"] = df_show["margem_projetada_pct"].map(lambda x: f"{x:.1f}%")
+        df_show = df_show.drop(columns=["mes_dt"])
+        df_show.columns = ["Mes", "Cenario Base", "Otimista", "Pessimista", "Margem (%)"]
+        st.dataframe(df_show, use_container_width=True, hide_index=True, height=310)
