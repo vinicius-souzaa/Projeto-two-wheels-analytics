@@ -1424,20 +1424,24 @@ elif pagina_atual == "projecoes":
         fill="tonexty", fillcolor="rgba(27,122,52,0.07)", mode="lines",
     ))
 
-    # Sombreamento do periodo projetado
+    # Sombreamento do periodo projetado — usar string ISO evita bug do
+    # plotly._mean com pd.Timestamp em Python 3.14 (sum(0 + Timestamp) falha)
+    x0_proj = df_pr_plot["x_anchor"].iloc[0].strftime("%Y-%m-%d")
+    x1_proj = df_pr_plot["x_anchor"].iloc[-1].strftime("%Y-%m-%d")
     fig.add_vrect(
-        x0=df_pr_plot["x_anchor"].iloc[0],
-        x1=df_pr_plot["x_anchor"].iloc[-1],
+        x0=x0_proj, x1=x1_proj,
         fillcolor=C["azul_claro"], opacity=0.05,
         annotation_text="Período Projetado",
         annotation_font_size=13,
         annotation_position="top left",
     )
 
-    # Linha vertical "hoje"
+    # Linha vertical "hoje" — string ISO pelo mesmo motivo
     if not df_diario.empty:
+        ultima_data_iso = ultima_data.strftime("%Y-%m-%d")
         fig.add_vline(
-            x=ultima_data, line_dash="dot", line_color=C["laranja"], line_width=1.5,
+            x=ultima_data_iso,
+            line_dash="dot", line_color=C["laranja"], line_width=1.5,
             annotation_text=f"Hoje ({ultima_data:%d/%m})",
             annotation_position="top right", annotation_font_size=12,
         )
