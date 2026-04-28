@@ -294,7 +294,7 @@ with st.sidebar:
             )
         else:
             # Inativo: botao estilizado via CSS geral do sidebar
-            if st.button(f"{ICONES[key]} {nome}", key=f"nav_{key}", use_container_width=True):
+            if st.button(f"{ICONES[key]} {nome}", key=f"nav_{key}", width="stretch"):
                 st.query_params["page"] = key
                 st.rerun()
 
@@ -475,7 +475,7 @@ if pagina_atual == "resumo":
                        color_discrete_map=MARCA_CORES,
                        labels={"mes": "", "receita": "Receita (R$)", "marca": "Marca"})
         fig.update_traces(line_width=2.5)
-        st.plotly_chart(plt_layout(fig), use_container_width=True)
+        st.plotly_chart(plt_layout(fig), width="stretch")
 
     with col_b:
         hdr("Participação de Receita por Marca",
@@ -490,7 +490,7 @@ if pagina_atual == "resumo":
             margin=dict(l=8, r=8, t=40, b=8),
             legend=dict(orientation="h", y=-0.14, font_size=12),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     col_c, col_d = st.columns(2)
 
@@ -511,7 +511,7 @@ if pagina_atual == "resumo":
             yaxis_title="", xaxis_title="Receita (R$)",
         )
         fig.update_yaxes(tickfont_size=11)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_d:
         hdr("Receita por Canal e Segmento",
@@ -531,7 +531,7 @@ if pagina_atual == "resumo":
         )
         fig.update_xaxes(showgrid=False)
         fig.update_yaxes(gridcolor="#EBF0F8")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     # Crescimento YoY por marca — Bug #3: respeita o filtro de periodo
     st.divider()
@@ -574,7 +574,7 @@ if pagina_atual == "resumo":
             )
             fig.update_xaxes(showgrid=False)
             fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.info("Sem marcas com dados em ambos os períodos para o comparativo.")
     else:
@@ -646,7 +646,7 @@ elif pagina_atual == "comercial":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=12)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_b:
         hdr("Evolução Mensal de Receita por Representante",
@@ -656,7 +656,7 @@ elif pagina_atual == "comercial":
         fig   = px.line(df_tv, x="mes", y="receita_realizada", color="vendedor",
                         labels={"mes": "", "receita_realizada": "Receita (R$)", "vendedor": ""})
         fig.update_traces(line_width=2)
-        st.plotly_chart(plt_layout(fig, h=400), use_container_width=True)
+        st.plotly_chart(plt_layout(fig, h=400), width="stretch")
 
     hdr("Receita vs Meta por Canal de Distribuição",
         "Comparativo entre receita realizada e meta estabelecida para cada canal B2B — "
@@ -682,7 +682,7 @@ elif pagina_atual == "comercial":
     )
     fig.update_xaxes(showgrid=False, tickfont_size=13)
     fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.divider()
     hdr("Ranking de Representantes no Período",
@@ -710,7 +710,7 @@ elif pagina_atual == "comercial":
             "clientes": "Clientes Atendidos",
             "ating_fmt": "Atingimento (%)",
         }),
-        use_container_width=True, hide_index=True,
+        width="stretch", hide_index=True,
     )
 
 
@@ -744,7 +744,7 @@ elif pagina_atual == "produto":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=12)
         fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_b:
         hdr("Margem Bruta por Categoria (%)",
@@ -772,7 +772,7 @@ elif pagina_atual == "produto":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(tickfont_size=12)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     hdr("Heatmap de Receita: Marca × Categoria",
         "Mapa de calor que cruza cada marca com suas categorias de produto. "
@@ -798,7 +798,7 @@ elif pagina_atual == "produto":
                 margin=dict(l=8, r=8, t=36, b=8),
                 font_size=13,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
     # ABC Curve
     st.divider()
@@ -851,7 +851,7 @@ elif pagina_atual == "produto":
         )
         fig_abc.update_yaxes(tickfont_size=10)
         fig_abc.update_xaxes(showgrid=False, tickfont_size=13)
-        st.plotly_chart(fig_abc, use_container_width=True)
+        st.plotly_chart(fig_abc, width="stretch")
 
     with col_abc_b:
         # Scatter receita x margem pct colorido por classe ABC
@@ -866,7 +866,7 @@ elif pagina_atual == "produto":
                          line_color=C["azul_escuro"],
                          annotation_text=f"Média {df_abc['mg_pct'].mean():.1f}%",
                          annotation_font_size=12)
-        st.plotly_chart(plt_layout(fig_sc, h=540), use_container_width=True)
+        st.plotly_chart(plt_layout(fig_sc, h=540), width="stretch")
 
     hdr("Catálogo Completo de Produtos")
     df_cat_full = carregar_catalogo()
@@ -877,7 +877,7 @@ elif pagina_atual == "produto":
             "categoria": "Categoria", "segmento": "Segmento",
             "preco": "Preço (R$)", "custo": "Custo (R$)", "margem_pct": "Margem (%)",
         }),
-        use_container_width=True, hide_index=True,
+        width="stretch", hide_index=True,
     )
 
 
@@ -908,7 +908,7 @@ elif pagina_atual == "regional":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_b:
         hdr("Top 15 Cidades — Receita",
@@ -933,7 +933,7 @@ elif pagina_atual == "regional":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(tickfont_size=11)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     hdr("Heatmap: Receita por Região × Marca",
         "Mapa de calor cruzando região com marca. Identifica quais marcas dominam "
@@ -958,7 +958,7 @@ elif pagina_atual == "regional":
                 paper_bgcolor="rgba(0,0,0,0)", height=290,
                 margin=dict(l=8, r=8, t=36, b=8), font_size=13,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
     col_c, col_d = st.columns(2)
 
@@ -970,7 +970,7 @@ elif pagina_atual == "regional":
         fig = px.line(df_revol, x="mes", y="receita", color="regiao",
                       labels={"mes": "", "receita": "Receita (R$)", "regiao": "Regiao"})
         fig.update_traces(line_width=2.2)
-        st.plotly_chart(plt_layout(fig, h=370), use_container_width=True)
+        st.plotly_chart(plt_layout(fig, h=370), width="stretch")
 
     with col_d:
         hdr("Receita por UF — Participação %",
@@ -988,7 +988,7 @@ elif pagina_atual == "regional":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1048,7 +1048,7 @@ elif pagina_atual == "estoque":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_b:
         hdr("Índice de Giro de Estoque por Marca",
@@ -1071,7 +1071,7 @@ elif pagina_atual == "estoque":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     hdr("Evolução do Valor em Estoque — Mensal",
         "Histórico do valor imobilizado em estoque (ao custo) por marca. "
@@ -1085,7 +1085,7 @@ elif pagina_atual == "estoque":
                   color_discrete_map=MARCA_CORES,
                   labels={"mes": "", "estoque_valor": "Valor em Estoque (R$)", "marca": "Marca"})
     fig.update_traces(line_width=2.2)
-    st.plotly_chart(plt_layout(fig, h=330), use_container_width=True)
+    st.plotly_chart(plt_layout(fig, h=330), width="stretch")
 
     st.divider()
     # Bug #2: separa "ruptura iminente" (com demanda + cobertura baixa) de
@@ -1112,7 +1112,7 @@ elif pagina_atual == "estoque":
                     "estoque_unidades": "Estoque (un)", "vendido_mes": "Vendido/mês",
                     "cobertura_dias": "Cobertura (dias)",
                 }),
-                use_container_width=True, hide_index=True,
+                width="stretch", hide_index=True,
             )
 
     with col_alert2:
@@ -1132,7 +1132,7 @@ elif pagina_atual == "estoque":
                     "estoque_unidades": "Estoque (un)",
                     "estoque_valor": "Capital Imobilizado (R$)",
                 }),
-                use_container_width=True, hide_index=True,
+                width="stretch", hide_index=True,
             )
 
 
@@ -1186,7 +1186,7 @@ elif pagina_atual == "metas":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_b:
         hdr("Evolução Mensal — Realizado vs Meta",
@@ -1207,7 +1207,7 @@ elif pagina_atual == "metas":
             name="Realizado", line=dict(color=C["azul_escuro"], width=2.5),
             fill="tonexty", fillcolor="rgba(0,85,165,0.10)", mode="lines",
         ))
-        st.plotly_chart(plt_layout(fig, h=370), use_container_width=True)
+        st.plotly_chart(plt_layout(fig, h=370), width="stretch")
 
     col_c, col_d = st.columns(2)
 
@@ -1235,7 +1235,7 @@ elif pagina_atual == "metas":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=12)
         fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_d:
         hdr("Margem Bruta por Marca — Acumulado",
@@ -1259,7 +1259,7 @@ elif pagina_atual == "metas":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1364,7 +1364,7 @@ elif pagina_atual == "projecoes":
         annotation_font_size=13,
         annotation_position="top left",
     )
-    st.plotly_chart(plt_layout(fig, h=460), use_container_width=True)
+    st.plotly_chart(plt_layout(fig, h=460), width="stretch")
 
     col_a, col_b = st.columns(2)
 
@@ -1385,7 +1385,7 @@ elif pagina_atual == "projecoes":
         )
         fig.update_xaxes(showgrid=False, tickfont_size=13)
         fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_b:
         hdr("Tabela Comparativa de Cenários",
@@ -1399,4 +1399,4 @@ elif pagina_atual == "projecoes":
         # Drop seguro: errors='ignore' evita crash se mes_dt nao existir
         df_show = df_show.drop(columns=["mes_dt"], errors="ignore")
         df_show.columns = ["Mês", "Cenário Base", "Otimista", "Pessimista", "Margem (%)"]
-        st.dataframe(df_show, use_container_width=True, hide_index=True, height=310)
+        st.dataframe(df_show, width="stretch", hide_index=True, height=310)
