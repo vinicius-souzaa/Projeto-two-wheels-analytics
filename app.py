@@ -1357,38 +1357,91 @@ elif pagina_atual == "projecoes":
 """)
 
     hdr("Cenários de Receita — Histórico + Projetado",
-        "Gráfico combinando os últimos meses realizados com os três cenários de projeção "
-        "(base, otimista, pessimista) para mai–out/2026. A área hachurada delimita o período projetado. "
-        "Cenários calibrados com sazonalidade histórica e taxas de crescimento diferenciadas.")
-    df_hist6 = dfF.groupby("mes")["receita"].sum().reset_index().tail(6)
+        "Combina o histórico mensal (ancorado no último dia de dados de cada mês) e a "
+        "evolução diária (linha tracejada cinza, suavizada por média móvel de 7 dias) com os "
+        "três cenários de projeção SARIMA para mai–out/2026.")
+
+    # Histórico mensal — ancora no ULTIMO dia de dados disponivel em cada mes
+    # (para abr/2026, isso é hoje, garantindo que o ponto apareça no dia 28)
+    df_hist_m = (
+        dfF.groupby("mes")
+        .agg(receita=("receita", "sum"), x_anchor=("data_dt", "max"))
+        .reset_index()
+        .sort_values("mes")
+        .tail(6)
+    )
+
+    # Evolução diária (média móvel de 7 dias) para os últimos 90 dias
+    df_diario = (
+        dfF.groupby("data_dt")["receita"].sum()
+        .reset_index().sort_values("data_dt")
+    )
+    if not df_diario.empty:
+        ultima_data = df_diario["data_dt"].max()
+        corte_90d = ultima_data - pd.Timedelta(days=90)
+        df_diario = df_diario[df_diario["data_dt"] >= corte_90d].copy()
+        df_diario["mm7"] = df_diario["receita"].rolling(7, min_periods=1).mean()
+
+    # Projeções — ancorar no dia 15 do mês (centro) para nao colar no inicio
+    df_pr_plot = df_pr.copy()
+    df_pr_plot["x_anchor"] = pd.to_datetime(df_pr_plot["mes"] + "-15")
+
     fig = go.Figure()
+
+    # 1) Linha diária (média móvel 7 dias) — fina, cinza, em background
+    if not df_diario.empty:
+        fig.add_trace(go.Scatter(
+            x=df_diario["data_dt"], y=df_diario["mm7"],
+            name="Diário (média móvel 7d)",
+            line=dict(color="#A0AEC0", width=1.2, dash="dash"),
+            mode="lines",
+            hovertemplate="%{x|%d/%m/%Y}<br>R$ %{y:,.0f}<extra></extra>",
+        ))
+
+    # 2) Histórico mensal
     fig.add_trace(go.Scatter(
-        x=df_hist6["mes"], y=df_hist6["receita"],
-        name="Historico", line=dict(color=C["azul_escuro"], width=2.5),
-        mode="lines+markers", marker_size=8,
+        x=df_hist_m["x_anchor"], y=df_hist_m["receita"],
+        name="Histórico Mensal",
+        line=dict(color=C["azul_escuro"], width=2.5),
+        mode="lines+markers", marker_size=9,
+        hovertemplate="%{x|%b/%Y}<br>R$ %{y:,.0f}<extra></extra>",
     ))
+
+    # 3) Cenários de projeção
     fig.add_trace(go.Scatter(
-        x=df_pr["mes"], y=df_pr["receita_pessimista"],
+        x=df_pr_plot["x_anchor"], y=df_pr_plot["receita_pessimista"],
         name="Pessimista", line=dict(color=C["vermelho"], dash="dot", width=2),
         mode="lines",
     ))
     fig.add_trace(go.Scatter(
-        x=df_pr["mes"], y=df_pr["receita_projetada"],
+        x=df_pr_plot["x_anchor"], y=df_pr_plot["receita_projetada"],
         name="Base", line=dict(color=C["azul_medio"], width=3),
-        mode="lines+markers", marker_size=9,
+        mode="lines+markers", marker_size=10,
     ))
     fig.add_trace(go.Scatter(
-        x=df_pr["mes"], y=df_pr["receita_otimista"],
+        x=df_pr_plot["x_anchor"], y=df_pr_plot["receita_otimista"],
         name="Otimista", line=dict(color=C["verde"], dash="dot", width=2),
         fill="tonexty", fillcolor="rgba(27,122,52,0.07)", mode="lines",
     ))
+
+    # Sombreamento do periodo projetado
     fig.add_vrect(
-        x0=df_pr["mes"].iloc[0], x1=df_pr["mes"].iloc[-1],
+        x0=df_pr_plot["x_anchor"].iloc[0],
+        x1=df_pr_plot["x_anchor"].iloc[-1],
         fillcolor=C["azul_claro"], opacity=0.05,
-        annotation_text="Periodo Projetado",
+        annotation_text="Período Projetado",
         annotation_font_size=13,
         annotation_position="top left",
     )
+
+    # Linha vertical "hoje"
+    if not df_diario.empty:
+        fig.add_vline(
+            x=ultima_data, line_dash="dot", line_color=C["laranja"], line_width=1.5,
+            annotation_text=f"Hoje ({ultima_data:%d/%m})",
+            annotation_position="top right", annotation_font_size=12,
+        )
+
     st.plotly_chart(plt_layout(fig, h=460), width="stretch")
 
     col_a, col_b = st.columns(2)
