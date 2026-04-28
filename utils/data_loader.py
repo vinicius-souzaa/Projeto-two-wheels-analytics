@@ -7,7 +7,8 @@ DATA_DIR = "data"
 @st.cache_data
 def carregar_vendas() -> pd.DataFrame:
     df = pd.read_csv(f"{DATA_DIR}/vendas_mensais.csv")
-    df["mes_dt"] = pd.to_datetime(df["mes"])
+    df["mes_dt"]  = pd.to_datetime(df["mes"])
+    df["data_dt"] = pd.to_datetime(df["data"])
     return df
 
 

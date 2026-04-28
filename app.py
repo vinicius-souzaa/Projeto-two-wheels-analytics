@@ -304,13 +304,21 @@ with st.sidebar:
     marcas_disp = sorted(df_v_raw["marca"].unique())
     marcas_sel  = st.multiselect("Marca", marcas_disp, default=marcas_disp, key="f_marca")
 
-    meses_disp  = sorted(df_v_raw["mes"].unique())
-    mes_ini, mes_fim = st.select_slider(
-        "Periodo",
-        options=meses_disp,
-        value=(meses_disp[0], meses_disp[-1]),
+    # Periodo agora e date_input com granularidade diaria.
+    data_min = df_v_raw["data_dt"].min().date()
+    data_max = df_v_raw["data_dt"].max().date()
+    periodo = st.date_input(
+        "Período",
+        value=(data_min, data_max),
+        min_value=data_min, max_value=data_max,
+        format="DD/MM/YYYY",
         key="f_per",
     )
+    # Trata o caso em que o usuario ainda nao selecionou as duas datas
+    if isinstance(periodo, tuple) and len(periodo) == 2:
+        data_ini, data_fim = periodo
+    else:
+        data_ini, data_fim = data_min, data_max
 
     canais_disp = sorted(df_v_raw["canal"].unique())
     canais_sel  = st.multiselect("Canal", canais_disp, default=canais_disp, key="f_canal")
@@ -319,20 +327,27 @@ with st.sidebar:
     seg_sel   = st.multiselect("Segmento", seg_disp, default=seg_disp, key="f_seg")
 
     st.divider()
-    st.caption("LAGOApar · Nova Lima, MG\nJan/2024 – Abr/2026")
+    st.caption(f"LAGOApar · Nova Lima, MG\n{data_min:%d/%m/%Y} – {data_max:%d/%m/%Y}")
+
+# Strings ISO usadas para filtrar (vendas: dia-a-dia; tabelas mensais: por mes)
+data_ini_s = data_ini.strftime("%Y-%m-%d")
+data_fim_s = data_fim.strftime("%Y-%m-%d")
+mes_ini    = data_ini.strftime("%Y-%m")
+mes_fim    = data_fim.strftime("%Y-%m")
 
 
 # ── Filtros globais ───────────────────────────────────────────────────────────
+# Vendas filtradas por DIA (granularidade diaria); demais tabelas por MES
 dfF = df_v_raw[
     df_v_raw["marca"].isin(marcas_sel) &
-    (df_v_raw["mes"] >= mes_ini) &
-    (df_v_raw["mes"] <= mes_fim) &
+    (df_v_raw["data"] >= data_ini_s) &
+    (df_v_raw["data"] <= data_fim_s) &
     df_v_raw["canal"].isin(canais_sel) &
     df_v_raw["segmento"].isin(seg_sel)
 ].copy()
 
 meses_p   = sorted(dfF["mes"].unique())
-m_atual   = meses_p[-1] if meses_p else meses_disp[-1]
+m_atual   = meses_p[-1] if meses_p else mes_fim
 m_ant     = meses_p[-2] if len(meses_p) > 1 else m_atual
 
 rec_total = dfF["receita"].sum()
@@ -345,27 +360,28 @@ ticket_md = rec_total / qtd_total if qtd_total else 0
 
 # Bug #3: YoY agora respeita o filtro de periodo. Compara o periodo selecionado
 # com o MESMO subperiodo do ano anterior (ex: jan-jun/2025 vs jan-jun/2024).
-def _yoy_periodo(df_raw, mes_ini_s, mes_fim_s, marcas_, canais_, segs_):
-    """Receita atual e receita do mesmo subperiodo do ano anterior."""
+# Granularidade diaria — usa coluna 'data' em vez de 'mes'.
+def _yoy_periodo(df_raw, d_ini, d_fim, marcas_, canais_, segs_):
+    """Receita atual e receita do mesmo subperiodo do ano anterior (em dias)."""
     rec_atual_p = df_raw[
         df_raw["marca"].isin(marcas_) &
-        (df_raw["mes"] >= mes_ini_s) & (df_raw["mes"] <= mes_fim_s) &
+        (df_raw["data"] >= d_ini) & (df_raw["data"] <= d_fim) &
         df_raw["canal"].isin(canais_) &
         df_raw["segmento"].isin(segs_)
     ]["receita"].sum()
     # mesmo periodo do ano anterior
-    ini_ant = (pd.to_datetime(mes_ini_s) - pd.DateOffset(years=1)).strftime("%Y-%m")
-    fim_ant = (pd.to_datetime(mes_fim_s) - pd.DateOffset(years=1)).strftime("%Y-%m")
+    ini_ant = (pd.to_datetime(d_ini) - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
+    fim_ant = (pd.to_datetime(d_fim) - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
     rec_ant_p = df_raw[
         df_raw["marca"].isin(marcas_) &
-        (df_raw["mes"] >= ini_ant) & (df_raw["mes"] <= fim_ant) &
+        (df_raw["data"] >= ini_ant) & (df_raw["data"] <= fim_ant) &
         df_raw["canal"].isin(canais_) &
         df_raw["segmento"].isin(segs_)
     ]["receita"].sum()
     return rec_atual_p, rec_ant_p, ini_ant, fim_ant
 
 rec_atual_yoy, rec_anterior_yoy, yoy_ini_ant, yoy_fim_ant = _yoy_periodo(
-    df_v_raw, mes_ini, mes_fim, marcas_sel, canais_sel, seg_sel
+    df_v_raw, data_ini_s, data_fim_s, marcas_sel, canais_sel, seg_sel
 )
 yoy = delta_pct(rec_atual_yoy, rec_anterior_yoy) if rec_anterior_yoy > 0 else 0.0
 yoy_disponivel = rec_anterior_yoy > 0
@@ -377,7 +393,11 @@ yoy_disponivel = rec_anterior_yoy > 0
 if pagina_atual == "resumo":
     st.title("⚡ Resumo Executivo")
     aviso_dados()
-    st.caption(f"Período: {mes_ini} → {mes_fim}  |  Marcas selecionadas: {', '.join(marcas_sel)}")
+    st.caption(
+        f"Período: {pd.to_datetime(data_ini_s):%d/%m/%Y} → "
+        f"{pd.to_datetime(data_fim_s):%d/%m/%Y}  |  "
+        f"Marcas selecionadas: {', '.join(marcas_sel)}"
+    )
 
     # KPIs principais
     c1, c2, c3, c4, c5, c6 = st.columns(6)
@@ -418,7 +438,7 @@ if pagina_atual == "resumo":
                        "Período anterior (mesmo intervalo do ano passado) sem dados — YoY indisponível.")
     elif yoy >= 10:
         card_yoy = rag("verde", "CRESCIMENTO YoY",
-                       f"Receita {mes_ini}–{mes_fim} supera {yoy_ini_ant}–{yoy_fim_ant} em {yoy:.1f}% — ritmo forte")
+                       f"Receita do período supera o mesmo intervalo do ano anterior em {yoy:.1f}% — ritmo forte")
     elif yoy >= 0:
         card_yoy = rag("amarelo", "CRESCIMENTO YoY",
                        f"Crescimento YoY de {yoy:.1f}% — monitorar aceleração")
@@ -535,16 +555,20 @@ if pagina_atual == "resumo":
 
     # Crescimento YoY por marca — Bug #3: respeita o filtro de periodo
     st.divider()
-    hdr(f"Crescimento por Marca — {mes_ini}–{mes_fim} vs {yoy_ini_ant}–{yoy_fim_ant}",
+    _ini_label = pd.to_datetime(data_ini_s).strftime("%d/%m/%Y")
+    _fim_label = pd.to_datetime(data_fim_s).strftime("%d/%m/%Y")
+    _ini_ant_label = pd.to_datetime(yoy_ini_ant).strftime("%d/%m/%Y")
+    _fim_ant_label = pd.to_datetime(yoy_fim_ant).strftime("%d/%m/%Y")
+    hdr(f"Crescimento por Marca — {_ini_label} a {_fim_label} vs {_ini_ant_label} a {_fim_ant_label}",
         "Comparativo de receita entre o período selecionado e o mesmo subperíodo do ano anterior, "
         "por marca. Mostra quais marcas ganharam ou perderam tração no intervalo escolhido.")
     if yoy_disponivel:
         # atual (filtrado)
         df_atual_marca = dfF.groupby("marca")["receita"].sum()
-        # ano anterior
+        # ano anterior — filtra por data (granularidade diaria)
         df_ant = df_v_raw[
             df_v_raw["marca"].isin(marcas_sel) &
-            (df_v_raw["mes"] >= yoy_ini_ant) & (df_v_raw["mes"] <= yoy_fim_ant) &
+            (df_v_raw["data"] >= yoy_ini_ant) & (df_v_raw["data"] <= yoy_fim_ant) &
             df_v_raw["canal"].isin(canais_sel) &
             df_v_raw["segmento"].isin(seg_sel)
         ]
@@ -579,8 +603,9 @@ if pagina_atual == "resumo":
             st.info("Sem marcas com dados em ambos os períodos para o comparativo.")
     else:
         st.info(
-            f"O período selecionado ({mes_ini}–{mes_fim}) não tem ano anterior disponível "
-            "no dataset. Ajuste o filtro para incluir um intervalo com ao menos um ano de histórico anterior."
+            f"O período selecionado ({_ini_label} a {_fim_label}) não tem ano anterior "
+            "disponível no dataset. Ajuste o filtro para incluir um intervalo com ao menos "
+            "um ano de histórico anterior."
         )
 
 

@@ -1,11 +1,13 @@
 """
 Gerador de dados sinteticos para dashboard LM 2 Rodas.
-Periodo: janeiro/2024 a abril/2026.
+Periodo: janeiro/2024 ate o dia atual (date.today()).
 Marcas: X11, Scud, Sentec, HighOne, WG Sports, Vessel.
 Produtos baseados no portfolio real das marcas do grupo.
 Cidades: cobertura nacional (Sul, Sudeste, CO, Norte, Nordeste).
+Granularidade: vendas diarias (coluna 'data'); demais tabelas mensais.
 """
 import os
+import calendar
 import numpy as np
 import pandas as pd
 from datetime import date
@@ -181,7 +183,20 @@ SAZONALIDADE = np.array([
 ])
 
 START = date(2024, 1, 1)
-END   = date(2026, 4, 30)
+END   = date.today()                # dataset cobre ate o dia atual
+
+def _dia_aleatorio_no_mes(mes_data, end_data):
+    """
+    Sorteia um dia dentro do mes. Para o mes corrente (parcial), limita
+    o sorteio ao dia atual (end_data.day). Garante que nao apareca data
+    no futuro.
+    """
+    ultimo_dia = calendar.monthrange(mes_data.year, mes_data.month)[1]
+    if mes_data.year == end_data.year and mes_data.month == end_data.month:
+        max_dia = end_data.day
+    else:
+        max_dia = ultimo_dia
+    return int(np.random.randint(1, max_dia + 1))
 
 
 def meses_entre(inicio, fim):
@@ -232,7 +247,12 @@ def gerar_vendas():
                         p=[0.50, 0.15, 0.10, 0.10, 0.07, 0.05, 0.03]
                     )
                     pv = round(prod["preco"] * (1 - desc), 2)
+                    # Coluna 'data': dia aleatorio dentro do mes (limitado a hoje
+                    # se for o mes corrente parcial)
+                    dia_n = _dia_aleatorio_no_mes(mes, END)
+                    data_dia = date(mes.year, mes.month, dia_n)
                     rows.append({
+                        "data":           data_dia.strftime("%Y-%m-%d"),
                         "mes":            mes.strftime("%Y-%m"),
                         "sku":            prod["sku"],
                         "produto":        prod["nome"],
@@ -250,9 +270,10 @@ def gerar_vendas():
                         "custo_total":    round(qtd * prod["custo"], 2),
                         "margem_bruta":   round(qtd * (pv - prod["custo"]), 2),
                     })
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows).sort_values("data").reset_index(drop=True)
     df.to_csv("data/vendas_mensais.csv", index=False)
     print(f"  vendas_mensais.csv -> {len(df):,} linhas | R$ {df['receita'].sum():,.0f} total")
+    print(f"                       periodo: {df['data'].min()} a {df['data'].max()}")
     return df
 
 

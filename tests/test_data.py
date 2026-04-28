@@ -44,8 +44,13 @@ def test_margem_coerente():
 
 def test_periodo_correto():
     df = pd.read_csv("data/vendas_mensais.csv")
+    # Periodo agora vai de jan/2024 ate o dia atual (date.today())
     assert df["mes"].min() >= "2024-01"
-    assert df["mes"].max() <= "2026-04"
+    assert df["data"].min() >= "2024-01-01"
+    # nao deve haver data no futuro
+    import datetime as _dt
+    hoje = _dt.date.today().strftime("%Y-%m-%d")
+    assert df["data"].max() <= hoje, f"Existe data futura no dataset: {df['data'].max()} > {hoje}"
 
 
 def test_todas_marcas_presentes():
@@ -124,3 +129,16 @@ def test_bug1_metas_canal_existe():
     df = pd.read_csv("data/metas_canal.csv")
     assert set(df["canal"].unique()) == {"Varejo Fisico", "E-commerce",
                                           "Distribuidores", "Marketplace"}
+
+
+def test_vendas_tem_coluna_data():
+    """Vendas com granularidade diaria — coluna 'data' obrigatoria."""
+    df = pd.read_csv("data/vendas_mensais.csv")
+    assert "data" in df.columns
+    # data deve ser parseavel como YYYY-MM-DD
+    parsed = pd.to_datetime(df["data"], format="%Y-%m-%d", errors="coerce")
+    assert parsed.notna().all(), "Existem datas em formato invalido"
+    # deve haver mais de um dia distinto por mes (granularidade real)
+    df["data_dt"] = parsed
+    dias_por_mes = df.groupby("mes")["data_dt"].nunique()
+    assert (dias_por_mes > 1).any(), "Granularidade diaria nao foi aplicada"
