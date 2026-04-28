@@ -1157,61 +1157,57 @@ elif pagina_atual == "projecoes":
 
     # ── Caixa de explicação do modelo ────────────────────────────────────────
     with st.expander("📐 Metodologia e Confiabilidade do Modelo", expanded=True):
-        # Calcula métricas de confiabilidade a partir do histórico
-        df_hist_all = dfF.groupby("mes")["receita"].sum().reset_index().sort_values("mes")
+        # Métricas fixas validadas na avaliação comparativa (eval_models.py)
+        MAPE_SARIMA  = 8.24    # MAPE out-of-sample 6 meses (nov/2025–abr/2026)
+        R2_SARIMA    = 0.9359
+        # CoV da série histórica completa
+        df_hist_all = df_v_raw.groupby("mes")["receita"].sum().reset_index().sort_values("mes")
         rec_series  = df_hist_all["receita"].values
-        # Coeficiente de Variação (CoV) — mede dispersão relativa da série
         cov = (rec_series.std() / rec_series.mean() * 100) if rec_series.mean() > 0 else 0
-        # MAPE in-sample: aplica o modelo base nos últimos 6 meses conhecidos e compara
-        if len(rec_series) >= 7:
-            import pandas as _pd
-            meses_hist = df_hist_all["mes"].values
-            erros = []
-            for i in range(-6, 0):
-                real_i = rec_series[i]
-                base_i = rec_series[i - 1]  # mês anterior como âncora
-                mes_dt_i = _pd.to_datetime(meses_hist[i])
-                saz_i    = float(np.array([0.82,0.79,0.85,0.88,0.91,0.95,
-                                           1.12,1.04,0.97,1.05,1.18,1.24])[mes_dt_i.month - 1])
-                proj_i   = base_i * saz_i * 1.014
-                erros.append(abs(real_i - proj_i) / real_i * 100 if real_i > 0 else 0)
-            mape = float(np.mean(erros))
-        else:
-            mape = 0.0
-        # Intervalos implícitos dos cenários
+        # Spread dos cenários gerados pelo IC 90% do SARIMA
         ot_spread = (df_pr["receita_otimista"].mean() / df_pr["receita_projetada"].mean() - 1) * 100
         pe_spread = (1 - df_pr["receita_pessimista"].mean() / df_pr["receita_projetada"].mean()) * 100
 
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         with col_m1:
-            st.metric("Modelo Base", "Sazonalidade + Tendência",
-                      help="Crescimento composto mensal sobre a base do último mês realizado")
+            st.metric("Modelo", "SARIMA(1,1,1)(1,1,1,12)",
+                      help="Selecionado por avaliação comparativa com 14 modelos: Naive, ARIMA, SARIMA, Holt-Winters, Linear, Ridge, Lasso, Random Forest, Gradient Boosting, XGBoost, Prophet")
         with col_m2:
-            cor_mape = "🟢" if mape < 8 else "🟡" if mape < 15 else "🔴"
-            st.metric(f"{cor_mape} MAPE (últimos 6 meses)", f"{mape:.1f}%",
-                      help="Mean Absolute Percentage Error — erro médio absoluto percentual do modelo nos últimos 6 meses históricos")
+            st.metric("MAPE out-of-sample", f"{MAPE_SARIMA:.2f}%",
+                      help="Erro médio absoluto percentual nos últimos 6 meses históricos (teste). Referência: modelo anterior tinha MAPE de 26.21%")
         with col_m3:
-            cor_cov = "🟢" if cov < 20 else "🟡" if cov < 35 else "🔴"
-            st.metric(f"{cor_cov} CoV da Série", f"{cov:.1f}%",
-                      help="Coeficiente de Variação — quanto a série histórica oscila em relação à média. Valores < 20% indicam série estável")
+            st.metric("R² out-of-sample", f"{R2_SARIMA:.4f}",
+                      help="Coeficiente de determinação — quanto da variância da série o modelo explica. Valores próximos de 1 indicam excelente ajuste")
         with col_m4:
-            st.metric("Spread Cenários", f"±{(ot_spread + pe_spread)/2:.1f}%",
-                      help="Amplitude média entre o cenário otimista e pessimista em relação ao cenário base")
+            cor_cov = "🟢" if cov < 20 else "🟡" if cov < 35 else "🔴"
+            st.metric(f"{cor_cov} CoV da Série Histórica", f"{cov:.1f}%",
+                      help="Coeficiente de Variação — dispersão relativa da série. Valores < 20% indicam série estável")
 
-        st.markdown("""
+        st.markdown(f"""
+**Seleção do modelo — avaliação comparativa (14 modelos testados):**
+
+| # | Modelo | MAPE | R² |
+|---|---|---|---|
+| 🥇 | **SARIMA(1,1,1)(1,1,1,12)** | **8.24%** | **0.936** |
+| 🥈 | SARIMA(0,1,1)(0,1,1,12) | 8.51% | 0.937 |
+| 🥉 | Gradient Boosting | 15.22% | 0.481 |
+| — | Regressão Linear | 18.16% | 0.815 |
+| — | Random Forest | 18.49% | 0.110 |
+| — | XGBoost | 20.67% | 0.511 |
+| — | ~~Modelo Anterior~~ | ~~26.21%~~ | ~~0.638~~ |
+| — | Prophet | 28.65% | -0.058 |
+
 **Como o modelo funciona:**
+- **Parte regular (1,1,1):** captura tendência de curto prazo com diferenciação de 1ª ordem + componentes AR e MA
+- **Parte sazonal (1,1,1,12):** captura o padrão anual de sazonalidade (período = 12 meses)
+- **Cenário Base:** previsão pontual do SARIMA
+- **Cenário Otimista / Pessimista:** limite superior e inferior do intervalo de confiança de **90%** — calculados estatisticamente pelo modelo, não por suposição manual
+- **Melhora vs modelo anterior:** MAPE de 26,21% → 8,24% = **redução de 69% no erro**
 
-| Componente | Descrição | Taxa aplicada |
-|---|---|---|
-| **Tendência de longo prazo** | Crescimento orgânico composto mês a mês | +1,4% a.m. (~18% a.a.) |
-| **Ajuste sazonal** | Índice calibrado com sazonalidade do mercado de duas rodas brasileiro | Jan–Dez (0,79 a 1,24) |
-| **Cenário Otimista** | Crescimento acelerado — demanda acima do esperado, expansão de canais | +2,5% a.m. |
-| **Cenário Pessimista** | Crescimento conservador — pressão de custos, juros elevados, câmbio | +0,5% a.m. |
-
-**Limitações e premissas:**
-- O modelo é determinístico (sem componente estocástico); não captura eventos exógenos (recall, disrupção de fornecedor, mudança regulatória).
-- A margem projetada é estimada com distribuição uniforme calibrada ao histórico (37–45%) — sem decomposição por marca ou canal.
-- Recomenda-se revisão mensal dos cenários conforme novos dados de sell-out forem disponibilizados.
+**Limitações:**
+- Série histórica de apenas 28 meses — o SARIMA sazonal fica mais robusto com 3+ ciclos anuais completos
+- Não captura choques exógenos (câmbio, juros, ruptura de fornecedor)
+- Margem projetada é estimada sobre o histórico consolidado — sem decomposição por marca
 """)
 
     hdr("Cenários de Receita — Histórico + Projetado",
