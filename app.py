@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 
 from utils.data_loader import (
     carregar_vendas, carregar_vendedores, carregar_estoque,
-    carregar_metas, carregar_projecoes, carregar_catalogo,
+    carregar_metas, carregar_metas_canal, carregar_projecoes, carregar_catalogo,
     fR, delta_pct,
 )
 
@@ -232,7 +232,7 @@ def hdr(titulo, desc=""):
 def aviso_dados():
     st.markdown(
         '<div class="disclaimer">⚠️ <strong>Dados sintéticos</strong> — '
-        'simulados com base em benchmarks reais do mercado brasileiro de duas rodas (2024-2026). '
+        'simulados com base em benchmarks reais do mercado brasileiro de duas rodas. '
         'Exclusivamente para fins de demonstração analítica.</div>',
         unsafe_allow_html=True,
     )
@@ -343,12 +343,32 @@ rec_atual = dfF[dfF["mes"] == m_atual]["receita"].sum()
 rec_ant   = dfF[dfF["mes"] == m_ant]["receita"].sum()
 ticket_md = rec_total / qtd_total if qtd_total else 0
 
-# YoY helpers
-df_2024 = dfF[dfF["mes"].str.startswith("2024")]
-df_2025 = dfF[dfF["mes"].str.startswith("2025")]
-rec_2024 = df_2024["receita"].sum()
-rec_2025 = df_2025["receita"].sum()
-yoy      = delta_pct(rec_2025, rec_2024) if rec_2024 else 0.0
+# Bug #3: YoY agora respeita o filtro de periodo. Compara o periodo selecionado
+# com o MESMO subperiodo do ano anterior (ex: jan-jun/2025 vs jan-jun/2024).
+def _yoy_periodo(df_raw, mes_ini_s, mes_fim_s, marcas_, canais_, segs_):
+    """Receita atual e receita do mesmo subperiodo do ano anterior."""
+    rec_atual_p = df_raw[
+        df_raw["marca"].isin(marcas_) &
+        (df_raw["mes"] >= mes_ini_s) & (df_raw["mes"] <= mes_fim_s) &
+        df_raw["canal"].isin(canais_) &
+        df_raw["segmento"].isin(segs_)
+    ]["receita"].sum()
+    # mesmo periodo do ano anterior
+    ini_ant = (pd.to_datetime(mes_ini_s) - pd.DateOffset(years=1)).strftime("%Y-%m")
+    fim_ant = (pd.to_datetime(mes_fim_s) - pd.DateOffset(years=1)).strftime("%Y-%m")
+    rec_ant_p = df_raw[
+        df_raw["marca"].isin(marcas_) &
+        (df_raw["mes"] >= ini_ant) & (df_raw["mes"] <= fim_ant) &
+        df_raw["canal"].isin(canais_) &
+        df_raw["segmento"].isin(segs_)
+    ]["receita"].sum()
+    return rec_atual_p, rec_ant_p, ini_ant, fim_ant
+
+rec_atual_yoy, rec_anterior_yoy, yoy_ini_ant, yoy_fim_ant = _yoy_periodo(
+    df_v_raw, mes_ini, mes_fim, marcas_sel, canais_sel, seg_sel
+)
+yoy = delta_pct(rec_atual_yoy, rec_anterior_yoy) if rec_anterior_yoy > 0 else 0.0
+yoy_disponivel = rec_anterior_yoy > 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -366,7 +386,11 @@ if pagina_atual == "resumo":
     with c3: kpi("Margem Bruta Média",   f"{mg_pct:.1f}%")
     with c4: kpi("Unidades Vendidas",    f"{qtd_total:,}")
     with c5: kpi("Ticket Médio",         fR(ticket_md))
-    with c6: kpi("Crescimento YoY",      f"{yoy:+.1f}%", destaque=(yoy > 0))
+    with c6:
+        if yoy_disponivel:
+            kpi("Crescimento YoY", f"{yoy:+.1f}%", destaque=(yoy > 0))
+        else:
+            kpi("Crescimento YoY", "n/d")
 
     st.divider()
 
@@ -389,12 +413,18 @@ if pagina_atual == "resumo":
     else:
         card_margem = rag("vermelho", None, f"Margem bruta {mg_pct:.1f}% — abaixo do mínimo de 36%")
 
-    if yoy >= 10:
-        card_yoy = rag("verde", "CRESCIMENTO YoY", f"Receita 2025 supera 2024 em {yoy:.1f}% — ritmo forte")
+    if not yoy_disponivel:
+        card_yoy = rag("amarelo", "CRESCIMENTO YoY",
+                       "Período anterior (mesmo intervalo do ano passado) sem dados — YoY indisponível.")
+    elif yoy >= 10:
+        card_yoy = rag("verde", "CRESCIMENTO YoY",
+                       f"Receita {mes_ini}–{mes_fim} supera {yoy_ini_ant}–{yoy_fim_ant} em {yoy:.1f}% — ritmo forte")
     elif yoy >= 0:
-        card_yoy = rag("amarelo", "CRESCIMENTO YoY", f"Crescimento YoY de {yoy:.1f}% — monitorar aceleração")
+        card_yoy = rag("amarelo", "CRESCIMENTO YoY",
+                       f"Crescimento YoY de {yoy:.1f}% — monitorar aceleração")
     else:
-        card_yoy = rag("vermelho", "CRESCIMENTO YoY", f"Receita 2025 recuou {abs(yoy):.1f}% vs 2024 — investigar causas")
+        card_yoy = rag("vermelho", "CRESCIMENTO YoY",
+                       f"Receita recuou {abs(yoy):.1f}% vs mesmo período do ano anterior — investigar causas")
 
     df_canal_r = dfF.groupby("canal")["receita"].sum()
     top_canal  = df_canal_r.idxmax() if not df_canal_r.empty else "—"
@@ -441,7 +471,6 @@ if pagina_atual == "resumo":
             "Evolução da receita para cada marca do portfólio no período selecionado — "
             "identifique tendências de crescimento, sazonalidade e comparativos entre marcas.")
         df_t = dfF.groupby(["mes", "marca"])["receita"].sum().reset_index()
-        # Media movel 3 meses para X11 (marca principal)
         fig  = px.line(df_t, x="mes", y="receita", color="marca",
                        color_discrete_map=MARCA_CORES,
                        labels={"mes": "", "receita": "Receita (R$)", "marca": "Marca"})
@@ -504,39 +533,55 @@ if pagina_atual == "resumo":
         fig.update_yaxes(gridcolor="#EBF0F8")
         st.plotly_chart(fig, use_container_width=True)
 
-    # Crescimento YoY por marca
+    # Crescimento YoY por marca — Bug #3: respeita o filtro de periodo
     st.divider()
-    hdr("Crescimento Ano a Ano por Marca (2024 vs 2025)",
-        "Comparativo de receita entre 2024 e 2025 para cada marca. "
-        "Mostra quais marcas ganharam ou perderam tração ao longo do ano.")
-    df_yoy = dfF.copy()
-    df_yoy["ano"] = df_yoy["mes"].str[:4]
-    df_yoy_gr = df_yoy[df_yoy["ano"].isin(["2024", "2025"])].groupby(
-        ["ano", "marca"])["receita"].sum().reset_index()
-    df_pivot = df_yoy_gr.pivot(index="marca", columns="ano", values="receita").fillna(0).reset_index()
-    if "2024" in df_pivot.columns and "2025" in df_pivot.columns:
+    hdr(f"Crescimento por Marca — {mes_ini}–{mes_fim} vs {yoy_ini_ant}–{yoy_fim_ant}",
+        "Comparativo de receita entre o período selecionado e o mesmo subperíodo do ano anterior, "
+        "por marca. Mostra quais marcas ganharam ou perderam tração no intervalo escolhido.")
+    if yoy_disponivel:
+        # atual (filtrado)
+        df_atual_marca = dfF.groupby("marca")["receita"].sum()
+        # ano anterior
+        df_ant = df_v_raw[
+            df_v_raw["marca"].isin(marcas_sel) &
+            (df_v_raw["mes"] >= yoy_ini_ant) & (df_v_raw["mes"] <= yoy_fim_ant) &
+            df_v_raw["canal"].isin(canais_sel) &
+            df_v_raw["segmento"].isin(seg_sel)
+        ]
+        df_ant_marca = df_ant.groupby("marca")["receita"].sum()
+        df_pivot = pd.DataFrame({
+            "atual":    df_atual_marca,
+            "anterior": df_ant_marca,
+        }).fillna(0).reset_index()
         df_pivot["crescimento_pct"] = (
-            (df_pivot["2025"] - df_pivot["2024"]) / df_pivot["2024"].replace(0, np.nan) * 100
+            (df_pivot["atual"] - df_pivot["anterior"]) /
+            df_pivot["anterior"].replace(0, np.nan) * 100
         ).round(1)
-        df_pivot = df_pivot.sort_values("crescimento_pct")
-        cores_yoy = [C["verde"] if v >= 0 else C["vermelho"] for v in df_pivot["crescimento_pct"]]
-        fig = go.Figure(go.Bar(
-            x=df_pivot["crescimento_pct"], y=df_pivot["marca"],
-            orientation="h", marker_color=cores_yoy,
-            text=[f"{v:+.1f}%" for v in df_pivot["crescimento_pct"]],
-            textposition="outside", textfont_size=13,
-        ))
-        fig.add_vline(x=0, line_color=C["azul_escuro"], line_width=1.5)
-        fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", height=300,
-            margin=dict(l=8, r=8, t=30, b=8),
-            xaxis_title="Variação % (2025 vs 2024)", yaxis_title="",
-        )
-        fig.update_xaxes(showgrid=False)
-        fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
-        st.plotly_chart(fig, use_container_width=True)
+        df_pivot = df_pivot.dropna(subset=["crescimento_pct"]).sort_values("crescimento_pct")
+        if not df_pivot.empty:
+            cores_yoy = [C["verde"] if v >= 0 else C["vermelho"] for v in df_pivot["crescimento_pct"]]
+            fig = go.Figure(go.Bar(
+                x=df_pivot["crescimento_pct"], y=df_pivot["marca"],
+                orientation="h", marker_color=cores_yoy,
+                text=[f"{v:+.1f}%" for v in df_pivot["crescimento_pct"]],
+                textposition="outside", textfont_size=13,
+            ))
+            fig.add_vline(x=0, line_color=C["azul_escuro"], line_width=1.5)
+            fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", height=300,
+                margin=dict(l=8, r=8, t=30, b=8),
+                xaxis_title="Variação % vs mesmo período do ano anterior", yaxis_title="",
+            )
+            fig.update_xaxes(showgrid=False)
+            fig.update_yaxes(gridcolor="#EBF0F8", tickfont_size=13)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Sem marcas com dados em ambos os períodos para o comparativo.")
     else:
-        st.info("Selecione um período que inclua 2024 e 2025 para visualizar o comparativo YoY.")
+        st.info(
+            f"O período selecionado ({mes_ini}–{mes_fim}) não tem ano anterior disponível "
+            "no dataset. Ajuste o filtro para incluir um intervalo com ao menos um ano de histórico anterior."
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -558,14 +603,16 @@ elif pagina_atual == "comercial":
     t_real   = dfV["receita_realizada"].sum()
     t_meta   = dfV["meta_receita"].sum()
     ating    = t_real / t_meta * 100 if t_meta else 0
-    tick_med = dfV["ticket_medio"].mean()
     cli_tot  = dfV["clientes_atendidos"].sum()
+    # Bug #6: ticket medio agregado correto (receita / clientes), nao media de medias
+    tick_med = t_real / cli_tot if cli_tot else 0
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1: kpi("Receita Realizada",    fR(t_real), destaque=True)
     with c2: kpi("Meta Acumulada",       fR(t_meta))
     with c3: kpi("Atingimento Geral",    f"{ating:.1f}%")
     with c4: kpi("Clientes Atendidos",   f"{cli_tot:,}")
+    with c5: kpi("Ticket Médio",         fR(tick_med))
 
     st.divider()
     col_a, col_b = st.columns(2)
@@ -613,10 +660,15 @@ elif pagina_atual == "comercial":
 
     hdr("Receita vs Meta por Canal de Distribuição",
         "Comparativo entre receita realizada e meta estabelecida para cada canal B2B — "
-        "Varejo Físico (clientes lojistas), E-commerce, Distribuidores e Marketplace.")
-    df_canal_v = dfF.groupby("canal")["receita"].sum().reset_index()
-    df_canal_v["meta_canal"] = df_canal_v["receita"] * np.random.uniform(0.88, 1.18,
-                                                                          size=len(df_canal_v))
+        "Varejo Físico, E-commerce, Distribuidores e Marketplace. "
+        "Metas são pré-definidas por canal (não recalculadas a cada filtro).")
+    # Bug #1: usa metas_canal.csv (deterministicas) ao inves de np.random.uniform
+    df_mc = carregar_metas_canal()
+    df_mcF = df_mc[(df_mc["mes"] >= mes_ini) & (df_mc["mes"] <= mes_fim)]
+    df_canal_v = df_mcF.groupby("canal").agg(
+        receita=("receita_realizada", "sum"),
+        meta_canal=("meta_receita", "sum"),
+    ).reset_index()
     fig = go.Figure()
     fig.add_trace(go.Bar(name="Meta", x=df_canal_v["canal"], y=df_canal_v["meta_canal"],
                          marker_color=C["azul_claro"], opacity=0.7))
@@ -634,17 +686,28 @@ elif pagina_atual == "comercial":
 
     st.divider()
     hdr("Ranking de Representantes no Período",
-        "Visão consolidada do desempenho de cada representante — receita, meta e percentual de atingimento.")
-    df_det = df_va.sort_values("ating", ascending=False).copy()
+        "Visão consolidada do desempenho de cada representante — região de atuação, "
+        "receita, meta e percentual de atingimento.")
+    # Bug #10: aproveita a regiao_atuacao adicionada no gerar_vendedores
+    df_va_full = dfV.groupby(["vendedor", "regiao_atuacao"]).agg(
+        realizado=("receita_realizada", "sum"),
+        meta=("meta_receita", "sum"),
+        clientes=("clientes_atendidos", "sum"),
+    ).reset_index()
+    df_va_full["ating"] = (df_va_full["realizado"] / df_va_full["meta"] * 100).round(1)
+    df_det = df_va_full.sort_values("ating", ascending=False).copy()
     df_det["realizado_fmt"] = df_det["realizado"].map(fR)
     df_det["meta_fmt"]      = df_det["meta"].map(fR)
     df_det["ating_fmt"]     = df_det["ating"].map(lambda x: f"{x:.1f}%")
     st.dataframe(
-        df_det[["vendedor", "realizado_fmt", "meta_fmt", "ating_fmt"]]
+        df_det[["vendedor", "regiao_atuacao", "realizado_fmt", "meta_fmt",
+                "clientes", "ating_fmt"]]
         .rename(columns={
             "vendedor": "Representante",
+            "regiao_atuacao": "Região",
             "realizado_fmt": "Receita Realizada",
             "meta_fmt": "Meta",
+            "clientes": "Clientes Atendidos",
             "ating_fmt": "Atingimento (%)",
         }),
         use_container_width=True, hide_index=True,
@@ -714,20 +777,28 @@ elif pagina_atual == "produto":
     hdr("Heatmap de Receita: Marca × Categoria",
         "Mapa de calor que cruza cada marca com suas categorias de produto. "
         "Células mais escuras = maior receita. Identifica gaps de portfólio e concentração.")
-    df_heat = dfF.pivot_table(
-        index="marca", columns="categoria", values="receita", aggfunc="sum", fill_value=0
-    )
-    fig = px.imshow(
-        df_heat,
-        color_continuous_scale=[[0, C["cinza_claro"]], [0.4, C["azul_claro"]], [1, C["azul_escuro"]]],
-        text_auto=".2s", aspect="auto",
-    )
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)", height=290,
-        margin=dict(l=8, r=8, t=36, b=8),
-        font_size=13,
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    # Bug #8: protege contra df vazio
+    if dfF.empty:
+        st.info("Sem dados no filtro selecionado para o heatmap.")
+    else:
+        df_heat = dfF.pivot_table(
+            index="marca", columns="categoria", values="receita",
+            aggfunc="sum", fill_value=0,
+        )
+        if df_heat.empty or df_heat.values.sum() == 0:
+            st.info("Sem dados no filtro selecionado para o heatmap.")
+        else:
+            fig = px.imshow(
+                df_heat,
+                color_continuous_scale=[[0, C["cinza_claro"]], [0.4, C["azul_claro"]], [1, C["azul_escuro"]]],
+                text_auto=".2s", aspect="auto",
+            )
+            fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", height=290,
+                margin=dict(l=8, r=8, t=36, b=8),
+                font_size=13,
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
     # ABC Curve
     st.divider()
@@ -867,19 +938,27 @@ elif pagina_atual == "regional":
     hdr("Heatmap: Receita por Região × Marca",
         "Mapa de calor cruzando região com marca. Identifica quais marcas dominam "
         "cada território e onde há oportunidades de expansão para marcas sub-representadas.")
-    df_rm = dfF.pivot_table(
-        index="regiao", columns="marca", values="receita", aggfunc="sum", fill_value=0
-    )
-    fig = px.imshow(
-        df_rm,
-        color_continuous_scale=[[0, C["cinza_claro"]], [0.4, C["azul_claro"]], [1, C["azul_escuro"]]],
-        text_auto=".2s", aspect="auto",
-    )
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)", height=290,
-        margin=dict(l=8, r=8, t=36, b=8), font_size=13,
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    # Bug #8: protege contra df vazio
+    if dfF.empty:
+        st.info("Sem dados no filtro selecionado para o heatmap.")
+    else:
+        df_rm = dfF.pivot_table(
+            index="regiao", columns="marca", values="receita",
+            aggfunc="sum", fill_value=0,
+        )
+        if df_rm.empty or df_rm.values.sum() == 0:
+            st.info("Sem dados no filtro selecionado para o heatmap.")
+        else:
+            fig = px.imshow(
+                df_rm,
+                color_continuous_scale=[[0, C["cinza_claro"]], [0.4, C["azul_claro"]], [1, C["azul_escuro"]]],
+                text_auto=".2s", aspect="auto",
+            )
+            fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", height=290,
+                margin=dict(l=8, r=8, t=36, b=8), font_size=13,
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
     col_c, col_d = st.columns(2)
 
@@ -920,22 +999,35 @@ elif pagina_atual == "estoque":
     aviso_dados()
 
     df_est = carregar_estoque()
-    # Bug fix: aplica filtro de marcas ao estoque do ultimo mes
-    df_est_ult = df_est[
+    # Bug #7: filtro respeita o periodo selecionado (era sempre o ultimo mes do dataset)
+    df_est_periodo = df_est[
         df_est["marca"].isin(marcas_sel) &
-        (df_est["mes"] == df_est["mes"].max())
-    ].copy()
+        (df_est["mes"] >= mes_ini) & (df_est["mes"] <= mes_fim)
+    ]
+    if df_est_periodo.empty:
+        st.info("Sem dados de estoque para o filtro selecionado.")
+        st.stop()
+    ult_mes_estoque = df_est_periodo["mes"].max()
+    df_est_ult = df_est_periodo[df_est_periodo["mes"] == ult_mes_estoque].copy()
 
     t_est_val = df_est_ult["estoque_valor"].sum()
-    giro_med  = df_est_ult["giro_estoque"].mean() if not df_est_ult.empty else 0
-    cob_med   = df_est_ult["cobertura_dias"].mean() if not df_est_ult.empty else 0
-    n_crit    = (df_est_ult["cobertura_dias"] < 15).sum()
+    # Bug #2: KPIs de giro/cobertura ignoram SKUs sem giro (vendido_mes=0),
+    # caso contrario as medias ficam viesadas por produtos descontinuados
+    df_est_ativo = df_est_ult[df_est_ult["vendido_mes"] > 0]
+    giro_med  = df_est_ativo["giro_estoque"].mean() if not df_est_ativo.empty else 0
+    cob_med   = df_est_ativo["cobertura_dias"].mean() if not df_est_ativo.empty else 0
+    # Ruptura REAL = SKUs com vendas E cobertura baixa (nao = SKUs descontinuados)
+    n_crit    = ((df_est_ult["vendido_mes"] > 0) &
+                 (df_est_ult["cobertura_dias"] < 15)).sum()
+    n_sem_giro = (df_est_ult["vendido_mes"] == 0).sum()
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1: kpi("Valor em Estoque (Custo)", fR(t_est_val), destaque=True)
     with c2: kpi("Giro Médio de Estoque",    f"{giro_med:.2f}")
     with c3: kpi("Cobertura Média",          f"{cob_med:.0f} dias")
-    with c4: kpi("SKUs em Nível Crítico",    str(int(n_crit)))
+    with c4: kpi("Ruptura Iminente",         str(int(n_crit)))
+    with c5: kpi("SKUs sem Giro",            str(int(n_sem_giro)))
+    st.caption(f"Mês de referência do estoque: {ult_mes_estoque}")
 
     st.divider()
     col_a, col_b = st.columns(2)
@@ -996,23 +1088,52 @@ elif pagina_atual == "estoque":
     st.plotly_chart(plt_layout(fig, h=330), use_container_width=True)
 
     st.divider()
-    hdr("Alertas: Produtos com Cobertura Crítica (< 15 dias)",
-        "SKUs cujo estoque atual é insuficiente para cobrir menos de 15 dias de vendas. "
-        "Requerem reposição urgente para evitar ruptura e perda de venda.")
-    df_crit = df_est_ult[df_est_ult["cobertura_dias"] < 15].sort_values("cobertura_dias")
-    if df_crit.empty:
-        st.success("✅ Nenhum produto com cobertura critica no momento.")
-    else:
-        st.warning(f"⚠️ {len(df_crit)} SKUs com cobertura abaixo de 15 dias — avaliar reposição imediata.")
-        st.dataframe(
-            df_crit[["sku", "produto", "marca", "estoque_unidades", "vendido_mes", "cobertura_dias"]]
-            .rename(columns={
-                "sku": "SKU", "produto": "Produto", "marca": "Marca",
-                "estoque_unidades": "Estoque (un)", "vendido_mes": "Vendido/mes",
-                "cobertura_dias": "Cobertura (dias)",
-            }),
-            use_container_width=True, hide_index=True,
-        )
+    # Bug #2: separa "ruptura iminente" (com demanda + cobertura baixa) de
+    # "SKU sem giro" (sem demanda — provavel descontinuacao)
+    col_alert1, col_alert2 = st.columns(2)
+
+    with col_alert1:
+        hdr("🔴 Ruptura Iminente (com demanda)",
+            "SKUs que ESTÃO vendendo mas com estoque insuficiente para cobrir 15 dias. "
+            "Ação: reposição urgente.")
+        df_rup = df_est_ult[
+            (df_est_ult["vendido_mes"] > 0) &
+            (df_est_ult["cobertura_dias"] < 15)
+        ].sort_values("cobertura_dias")
+        if df_rup.empty:
+            st.success("✅ Nenhum SKU em ruptura iminente.")
+        else:
+            st.warning(f"⚠️ {len(df_rup)} SKUs — reposição imediata.")
+            st.dataframe(
+                df_rup[["sku", "produto", "marca", "estoque_unidades",
+                        "vendido_mes", "cobertura_dias"]]
+                .rename(columns={
+                    "sku": "SKU", "produto": "Produto", "marca": "Marca",
+                    "estoque_unidades": "Estoque (un)", "vendido_mes": "Vendido/mês",
+                    "cobertura_dias": "Cobertura (dias)",
+                }),
+                use_container_width=True, hide_index=True,
+            )
+
+    with col_alert2:
+        hdr("🟡 SKUs sem Giro (revisar portfólio)",
+            "SKUs sem vendas no mês de referência. Candidatos a descontinuação, "
+            "promoção ou revisão de mix. Não é ruptura de estoque.")
+        df_sem = df_est_ult[df_est_ult["vendido_mes"] == 0].copy()
+        if df_sem.empty:
+            st.success("✅ Todos os SKUs venderam no mês.")
+        else:
+            st.info(f"ℹ️ {len(df_sem)} SKUs sem giro — avaliar descontinuação.")
+            st.dataframe(
+                df_sem[["sku", "produto", "marca", "estoque_unidades",
+                        "estoque_valor"]]
+                .rename(columns={
+                    "sku": "SKU", "produto": "Produto", "marca": "Marca",
+                    "estoque_unidades": "Estoque (un)",
+                    "estoque_valor": "Capital Imobilizado (R$)",
+                }),
+                use_container_width=True, hide_index=True,
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1275,6 +1396,7 @@ elif pagina_atual == "projecoes":
         df_show["receita_otimista"]     = df_show["receita_otimista"].map(fR)
         df_show["receita_pessimista"]   = df_show["receita_pessimista"].map(fR)
         df_show["margem_projetada_pct"] = df_show["margem_projetada_pct"].map(lambda x: f"{x:.1f}%")
-        df_show = df_show.drop(columns=["mes_dt"])
-        df_show.columns = ["Mes", "Cenario Base", "Otimista", "Pessimista", "Margem (%)"]
+        # Drop seguro: errors='ignore' evita crash se mes_dt nao existir
+        df_show = df_show.drop(columns=["mes_dt"], errors="ignore")
+        df_show.columns = ["Mês", "Cenário Base", "Otimista", "Pessimista", "Margem (%)"]
         st.dataframe(df_show, use_container_width=True, hide_index=True, height=310)

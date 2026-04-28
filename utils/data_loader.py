@@ -33,6 +33,13 @@ def carregar_metas() -> pd.DataFrame:
 
 
 @st.cache_data
+def carregar_metas_canal() -> pd.DataFrame:
+    df = pd.read_csv(f"{DATA_DIR}/metas_canal.csv")
+    df["mes_dt"] = pd.to_datetime(df["mes"])
+    return df
+
+
+@st.cache_data
 def carregar_projecoes() -> pd.DataFrame:
     df = pd.read_csv(f"{DATA_DIR}/projecoes.csv")
     df["mes_dt"] = pd.to_datetime(df["mes"])

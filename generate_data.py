@@ -153,16 +153,26 @@ PESOS_CIDADES = [peso_cidade(c) for c in CIDADES]
 CANAIS = ["Varejo Fisico", "E-commerce", "Distribuidores", "Marketplace"]
 PESOS_CANAL = [0.25, 0.38, 0.22, 0.15]
 
+# Cada vendedor atende uma macro-regiao (atuacao primaria)
 VENDEDORES = [
-    "Ana Paula Ferreira",
-    "Carlos Eduardo Lima",
-    "Fernanda Oliveira",
-    "Ricardo Souza",
-    "Juliana Costa",
-    "Marcos Vieira",
-    "Patricia Mendes",
-    "Diego Alves",
+    ("Ana Paula Ferreira",  "Sudeste"),
+    ("Carlos Eduardo Lima", "Nordeste"),
+    ("Fernanda Oliveira",   "Sul"),
+    ("Ricardo Souza",       "Sudeste"),
+    ("Juliana Costa",       "Centro-Oeste"),
+    ("Marcos Vieira",       "Sul"),
+    ("Patricia Mendes",     "Norte"),
+    ("Diego Alves",         "Nordeste"),
 ]
+
+# Multiplicadores deterministicos de meta por canal (substitui np.random.uniform
+# sem seed que mudava a cada rerun) — bug #1
+META_PCT_CANAL = {
+    "Varejo Fisico":  0.96,   # canal maduro, meta proxima do realizado
+    "E-commerce":     1.08,   # canal em crescimento, meta agressiva
+    "Distribuidores": 1.02,
+    "Marketplace":    0.93,   # margem mais apertada, meta conservadora
+}
 
 # sazonalidade mensal (pico nov/dez, julho, e agosto)
 SAZONALIDADE = np.array([
@@ -214,7 +224,8 @@ def gerar_vendas():
                         PESOS_CIDADES[i_cid] * pc * saz * cresc *
                         np.random.uniform(0.65, 1.35)
                     )))
-                    if qtd == 0 and np.random.random() > 0.55:
+                    # Bug #5: nao gravar linhas com qtd=0 (76% do dataset era ruido)
+                    if qtd == 0:
                         continue
                     desc = np.random.choice(
                         [0, 0, 0, 0.05, 0.08, 0.10, 0.12],
@@ -247,18 +258,39 @@ def gerar_vendas():
 
 # ── 2. Vendedores ─────────────────────────────────────────────────────────────
 def gerar_vendedores(df_v):
+    """
+    Bug #4: receita de vendedores agora reconcilia EXATAMENTE com vendas (mesmo
+    valor mensal, distribuido por dirichlet). Antes havia diferenca de ~0.84%.
+    Bug #10: cada vendedor tem regiao_atuacao + viesa shares pela receita
+    real da regiao no mes (vendedor de regiao forte recebe share maior).
+    """
     rows = []
+    receita_mensal_regiao = (
+        df_v.groupby(["mes", "regiao"])["receita"].sum().reset_index()
+    )
     for mes in MESES:
         mes_str = mes.strftime("%Y-%m")
         rec_mes = df_v[df_v["mes"] == mes_str]["receita"].sum()
-        shares  = np.random.dirichlet(np.ones(len(VENDEDORES)) * 3)
-        for vend, share in zip(VENDEDORES, shares):
-            receita = round(rec_mes * share * np.random.uniform(0.88, 1.12), 2)
+        # Pesos por vendedor proporcionais a receita da sua regiao no mes
+        rec_reg_mes = (
+            receita_mensal_regiao[receita_mensal_regiao["mes"] == mes_str]
+            .set_index("regiao")["receita"].to_dict()
+        )
+        pesos_base = np.array([rec_reg_mes.get(reg, 1) for _, reg in VENDEDORES],
+                              dtype=float)
+        # Dirichlet centrado nesses pesos (com algum ruido = perfis individuais)
+        shares = np.random.dirichlet(pesos_base / pesos_base.sum() * 12)
+        # Normaliza para somar exatamente 1 (reconcilia 100% com vendas)
+        shares = shares / shares.sum()
+
+        for (vend, regiao), share in zip(VENDEDORES, shares):
+            receita = round(rec_mes * share, 2)
             meta    = round(receita * np.random.uniform(0.90, 1.18), 2)
             clientes = np.random.randint(25, 90)
             rows.append({
                 "mes":               mes_str,
                 "vendedor":          vend,
+                "regiao_atuacao":    regiao,
                 "receita_realizada": receita,
                 "meta_receita":      meta,
                 "atingimento_pct":   round(receita / meta * 100, 1),
@@ -349,6 +381,33 @@ def gerar_metas(df_v):
     return df
 
 
+# ── 4b. Metas por canal (deterministicas) — bug #1 ───────────────────────────
+def gerar_metas_canal(df_v):
+    """
+    Substitui o calculo de meta por canal feito no app.py com np.random.uniform
+    sem seed (que mudava a cada rerun). Agora a meta e deterministica via
+    META_PCT_CANAL e fica salva no CSV.
+    """
+    rows = []
+    for mes in MESES:
+        mes_str = mes.strftime("%Y-%m")
+        for canal in CANAIS:
+            real = df_v[(df_v["mes"] == mes_str) &
+                        (df_v["canal"] == canal)]["receita"].sum()
+            meta = round(real / META_PCT_CANAL[canal], 2) if META_PCT_CANAL[canal] > 0 else 0
+            rows.append({
+                "mes":                mes_str,
+                "canal":              canal,
+                "receita_realizada":  round(real, 2),
+                "meta_receita":       meta,
+                "variacao_pct":       round((real - meta) / max(1, meta) * 100, 1),
+            })
+    df = pd.DataFrame(rows)
+    df.to_csv("data/metas_canal.csv", index=False)
+    print(f"  metas_canal.csv     -> {len(df):,} linhas")
+    return df
+
+
 # ── 5. Projecoes (mai-out 2026) via SARIMA(1,1,1)(1,1,1,12) ──────────────────
 def gerar_projecoes(df_v):
     """
@@ -427,6 +486,7 @@ if __name__ == "__main__":
     gerar_vendedores(df_v)
     gerar_estoque(df_v)
     gerar_metas(df_v)
+    gerar_metas_canal(df_v)
     gerar_projecoes(df_v)
     gerar_catalogo()
     print("\nConcluido com sucesso em ./data/")

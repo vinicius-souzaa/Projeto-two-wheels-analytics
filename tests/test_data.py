@@ -90,3 +90,37 @@ def test_data_loader():
     assert fR(42_000)    == "R$ 42K"
     assert delta_pct(110, 100) == 10.0
     assert delta_pct(90, 100)  == -10.0
+
+
+# ── Testes para bugs corrigidos ──────────────────────────────────────────────
+def test_bug5_sem_linhas_quantidade_zero():
+    """Bug #5: dataset nao deve ter linhas com quantidade=0 (eram 76% antes)."""
+    df = pd.read_csv("data/vendas_mensais.csv")
+    assert (df["quantidade"] > 0).all(), "Existem linhas com quantidade<=0"
+
+
+def test_bug4_vendedores_reconciliam_com_vendas():
+    """Bug #4: receita de vendedores deve casar com vendas por mes."""
+    df_v = pd.read_csv("data/vendas_mensais.csv")
+    df_ve = pd.read_csv("data/vendedores.csv")
+    rec_vendas = df_v.groupby("mes")["receita"].sum()
+    rec_vended = df_ve.groupby("mes")["receita_realizada"].sum()
+    # Tolerancia de R$ 5 por mes (arredondamento de 8 vendedores)
+    diff = (rec_vendas - rec_vended).abs()
+    assert (diff < 5).all(), f"Diferenca alem do esperado: {diff[diff>=5].to_dict()}"
+
+
+def test_bug10_vendedores_tem_regiao():
+    """Bug #10: vendedores devem ter coluna regiao_atuacao."""
+    df_ve = pd.read_csv("data/vendedores.csv")
+    assert "regiao_atuacao" in df_ve.columns
+    regioes_validas = {"Sul", "Sudeste", "Nordeste", "Centro-Oeste", "Norte"}
+    assert set(df_ve["regiao_atuacao"].unique()).issubset(regioes_validas)
+
+
+def test_bug1_metas_canal_existe():
+    """Bug #1: arquivo metas_canal.csv deve existir e ter 4 canais."""
+    assert os.path.exists("data/metas_canal.csv")
+    df = pd.read_csv("data/metas_canal.csv")
+    assert set(df["canal"].unique()) == {"Varejo Fisico", "E-commerce",
+                                          "Distribuidores", "Marketplace"}
